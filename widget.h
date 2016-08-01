@@ -7,6 +7,10 @@ namespace Ui {
   class Widget;
 }
 
+enum class WIDGET_TAB_IDX {
+  FOUND_TEXT = 0, PAGE_RENDER, GRAPH_RENDER
+};
+
 class Widget : public QWidget
 {
   Q_OBJECT

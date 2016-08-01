@@ -6,6 +6,16 @@ Widget::Widget(QWidget *parent) :
   ui(new Ui::Widget)
 {
   ui->setupUi(this);
+  ui->groupBoxText->setLayout(ui->horizontalLayoutText);
+  QTabWidget* tabw = ui->tabWidget;
+  QWidget* textWidget = tabw->widget((int)WIDGET_TAB_IDX::FOUND_TEXT);
+  textWidget->setLayout(ui->textHorizontalLayout);
+
+  QWidget* pageWidget = tabw->widget((int)WIDGET_TAB_IDX::PAGE_RENDER);
+  pageWidget->setLayout(ui->pageHorizontalLayout);
+
+  QWidget* graphWidget = tabw->widget((int)WIDGET_TAB_IDX::GRAPH_RENDER);
+  graphWidget->setLayout(ui->graphHorizontalLayout);
 }
 
 Widget::~Widget()
