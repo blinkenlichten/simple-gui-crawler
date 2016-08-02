@@ -11,6 +11,7 @@
 #include "client_http.hpp"
 #include <atomic>
 #include <array>
+#include "boost/regex.hpp"
 
 
 namespace WebGrep {
@@ -20,38 +21,59 @@ class TaskAllocator;
 enum class WorkerAction
 {
   LOOP_QUIT,
+  /*downloads one http page via GET*/
   DOWNLOAD_ONE,
-  DOWNLOAD_AND_GREP_RECURSIVE, GREP_RECURSIVE, NONE_LAST
+  /*spawns child nodes, downloads pages and greps again*/
+  DOWNLOAD_AND_GREP_RECURSIVE,
+  /*spaws child list of tasks with urls*/
+  GREP_ONE,
+  NONE_LAST
 };
 
+static boost::regex HttpExrp( "^(?:http://)?([^/]+)(?:/?.*/?)/(.*)$" );
+
+class Worker;
+
+/** LinkedTask object is not thread-safe.*/
 class LinkedTask : public boost::noncopyable
 {
 public:
-  LinkedTask() : level(0), root(nullptr), parent(nullptr), next(nullptr)
+  LinkedTask() : level(0), root(nullptr), parent(nullptr)
   {
     maxLinkCount = 256;
+    next.store(0);
   }
-  //shallow copy without targetUrl, pageContent
+  //shallow copy without {.next, .targetUrl, .pageContent}
   void shallowCopy(const LinkedTask& other);
 
   unsigned level;
   LinkedTask* root;
   LinkedTask* parent;
-  LinkedTask* next;
+  std::atomic_uintptr_t next;//cast to (LinkedTask*)
 
   std::string targetUrl;
-  std::string grepString;
-  std::string pageContent;
+  boost::regex grepExpr;  //< regexp to be matched
+  std::string pageContent;//< html content
 
-  std::shared_ptr<TaskAllocator> taskAllocator; //must not be null
+  //contains(string::const_iterator) matched results of regexp in .grepExptr from .pageContent
+  boost::smatch matchedText;
+
+  //contains matched URLs in .pageContent
+  boost::smatch matchURL;
 
   unsigned maxLinkCount;
   std::atomic_uint* linksCounterPtr;//not null
+
+  std::function<void(LinkedTask*, Worker* w)> pageMatchFinishedCb;
+
 };
 //---------------------------------------------------------------
 struct WorkerCommand
 {
-  WorkerCommand(): command(WorkerAction::NONE_LAST), task(nullptr) { }
+  WorkerCommand(): command(WorkerAction::NONE_LAST), task(nullptr)
+  {
+    taskDisposer = [](LinkedTask*){/*empty ftor*/};
+  }
   WorkerAction command;
 
   //must be disposed manually by taskDisposer(LinkedTask*);

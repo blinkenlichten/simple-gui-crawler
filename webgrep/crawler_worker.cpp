@@ -1,25 +1,24 @@
 #include "crawler_worker.h"
 
 #include <iostream>
+#include "boost/regex.hpp"
 
 namespace WebGrep {
 
-typedef boost::default_user_allocator_new_delete Al_t;
-typedef boost::detail::spinlock Slock_t;
+//typedef boost::default_user_allocator_new_delete Al_t;
+//typedef boost::detail::spinlock Slock_t;
 //---------------------------------------------------------------
-class TaskAllocator : public boost::fast_pool_allocator<char, Al_t, Slock_t, 128 * sizeof(LinkedTask), 0>
-{
-  public:
-
-};
+//class TaskAllocator : public boost::fast_pool_allocator<char, Al_t, Slock_t, 128 * sizeof(LinkedTask), 0>
+//{
+//  public:
+//};
 //---------------------------------------------------------------
 void LinkedTask::shallowCopy(const LinkedTask& other)
 {
   level = other.level;
   root = other.root;
   parent = other.parent;
-  grepString = other.grepString;
-  taskAllocator = other.taskAllocator;
+  grepExpr = other.grepExpr;
   maxLinkCount = other.maxLinkCount;
   linksCounterPtr = other.linksCounterPtr;
 }
@@ -43,7 +42,6 @@ static std::string ExtractHostPortHttp(const std::string& targetUrl)
 Worker::Worker() : ctx(new WorkerCtx)
 {
   running = false;
-  ctx->taskAllocator.reset(new TaskAllocator);
   cmdList.reserve(128);
 
   //func: DOWNLOAD_ONE
@@ -58,31 +56,48 @@ Worker::Worker() : ctx(new WorkerCtx)
     std::shared_ptr<SimpleWeb::Response> response = hclient->request("GET", task->targetUrl);
     response->content >> task->pageContent;
   };
-  //func: DOWNLOAD_RECURSIVE
+  //func: GREP_ONE
+  jobfuncs[(int)WorkerAction::GREP_ONE] =
+      [this](LinkedTask* task, Worker* w)
+  {
+    //download one page:
+    jobfuncs[(int)WorkerAction::DOWNLOAD_ONE](task, w);
+    //grep the grepExpr:
+    boost::regex_search(task->pageContent, task->matchedText, task->grepExpr);
+    //grep the http:// URLs and spawn new nodes:
+    boost::regex_search(task->pageContent, task->matchURL, WebGrep::HttpExrp);
+    if (task->pageMatchFinishedCb)
+      {
+        task->pageMatchFinishedCb(task, w);
+      }
+  };
+
+
+  //func: DOWNLOAD_GREP_RECURSIVE
   jobfuncs[(int)WorkerAction::DOWNLOAD_AND_GREP_RECURSIVE] =
       [this](LinkedTask* task, Worker* w)
    {
-     while(w->isRunning() && task->linksCounterPtr->load() < task->maxLinkCount)
+     while(nullptr != task->linksCounterPtr && w->isRunning()
+           && task->linksCounterPtr->load() < task->maxLinkCount)
        {
-         //download one page:
-         jobfuncs[(int)WorkerAction::DOWNLOAD_ONE](task, w);
+         jobfuncs[(int)WorkerAction::GREP_ONE](task, w);
          if (task->pageContent.empty())
            {
              break;
            }
-
-
-         task->linksCounterPtr->operator ++();
-         {
-           //grep it's content for .html links:
-           auto child = new LinkedTask();
-           child->shallowCopy(*task);
-           child->level++;
-           child->parent = task;
-           task->next = child;
-           task = task->next;
-           jobfuncs[(int)WorkerAction::DOWNLOAD_AND_GREP_RECURSIVE](task, w);
-         }
+         //create linked list from grepped URLS:
+         for(size_t cnt = 0; cnt < task->matchURL.size(); ++cnt)
+           {
+             task->linksCounterPtr->operator ++();
+             //grep it's content for .html links:
+             auto child = new LinkedTask();
+             child->shallowCopy(*task);
+             child->parent = task;
+             child->level = 1u + child->parent->level;
+             //atomically store the new node
+             task->next.store((std::uintptr_t)child);
+             jobfuncs[(int)WorkerAction::DOWNLOAD_AND_GREP_RECURSIVE]((LinkedTask*)task->next.load(), w);
+           }
        }
    };
 
@@ -102,6 +117,7 @@ Worker::Worker() : ctx(new WorkerCtx)
                 break;
               }
             jobfuncs[(int)wcmd.command](wcmd.task, this);
+            wcmd.taskDisposer(wcmd.task);
           }
         cmdList.clear();
       }
