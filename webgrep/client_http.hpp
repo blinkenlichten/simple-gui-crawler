@@ -24,8 +24,10 @@ class Response;
 class Client : public std::enable_shared_from_this<Client>
 {
 public:
+  typedef std::shared_ptr<boost::asio::io_service> AsioSrvPtr;
 
-  Client(const std::string& host_port, unsigned short default_port = 80);
+  /** @param host port:  somesite.com:8080/uri */
+  Client(AsioSrvPtr asio, const std::string& host_port, unsigned short default_port = 80);
   virtual ~Client() {}
 
   std::shared_ptr<Response> request(const std::string& request_type,
@@ -38,24 +40,19 @@ public:
                                     std::iostream& content,
                                     const std::map<std::string, std::string>& header=std::map<std::string, std::string>());
 
-  typedef boost::default_user_allocator_new_delete Al_t;
-  typedef boost::detail::spinlock Slock_t;
-  typedef boost::fast_pool_allocator<char, Al_t, Slock_t, 128, 0> CharPoolAlloc_t;
-  typedef std::basic_string<char, std::char_traits<char>, CharPoolAlloc_t> PooledString_t;
-
   boost::asio::streambuf write_buffer;
+
+  std::string host;
+  unsigned short port;
 
 protected:
 
-  boost::asio::io_service asio_io_service;
+  std::shared_ptr<boost::asio::io_service> asio_io_service;
   boost::asio::ip::tcp::endpoint asio_endpoint;
   boost::asio::ip::tcp::resolver asio_resolver;
 
   std::shared_ptr<TCPSocketType> socket;
   bool socket_error;
-
-  std::string host;
-  unsigned short port;
 
   virtual void connect();
 
@@ -64,7 +61,6 @@ protected:
   std::shared_ptr<Response> cachedResponse;
   std::shared_ptr<Response> request_read();
 
-  CharPoolAlloc_t charPool;
 };
 
 //-------------------------

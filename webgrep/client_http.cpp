@@ -2,8 +2,8 @@
 
 namespace SimpleWeb {
 
-Client::Client(const std::string& host_port, unsigned short default_port)
-  : asio_resolver(asio_io_service), socket_error(false)
+Client::Client(AsioSrvPtr asio, const std::string& host_port, unsigned short default_port)
+  : asio_io_service(asio), asio_resolver(*asio_io_service), socket_error(false)
 {
   cachedResponse.reset(new Response(shared_from_this()));
   cachedResponse->status_code.reserve(64);
@@ -20,7 +20,7 @@ Client::Client(const std::string& host_port, unsigned short default_port)
     }
 
   asio_endpoint = boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port);
-  socket = std::make_shared<TCPSocketType>(asio_io_service);
+  socket = std::make_shared<TCPSocketType>(*asio_io_service);
 }
 
 void Client::connect()
@@ -53,7 +53,7 @@ std::shared_ptr<Response> Client::request
   for(auto& h: header) {
       write_stream << h.first << ": " << h.second << "\r\n";
     }
-  if(content.size()>0)
+  if(content.size() > 0)
     write_stream << "Content-Length: " << content.size() << "\r\n";
   write_stream << "\r\n";
 
@@ -61,7 +61,7 @@ std::shared_ptr<Response> Client::request
     connect();
 
     boost::asio::write(*socket, write_buffer);
-    if(content.size()>0)
+    if(content.size() > 0)
       boost::asio::write(*socket, boost::asio::buffer(content.data(), content.size()));
 
   }
@@ -92,10 +92,10 @@ std::shared_ptr<Response> Client::request(const std::string& request_type,
   for(auto& h: header) {
       write_stream << h.first << ": " << h.second << "\r\n";
     }
-  if(content_length>0)
+  if(content_length > 0)
     write_stream << "Content-Length: " << content_length << "\r\n";
   write_stream << "\r\n";
-  if(content_length>0)
+  if(content_length > 0)
     write_stream << content.rdbuf();
 
   try {
@@ -152,7 +152,7 @@ std::shared_ptr<Response> Client::request_read()
     auto header_it=response->header.find("Content-Length");
     if(header_it!=response->header.end()) {
         auto content_length=stoull(header_it->second);
-        if(content_length>num_additional_bytes) {
+        if(content_length > num_additional_bytes) {
             boost::asio::read(*socket, response->content_buffer,
                               boost::asio::transfer_exactly(content_length-num_additional_bytes));
           }

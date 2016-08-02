@@ -16,6 +16,7 @@ Widget::Widget(QWidget *parent) :
 
   QWidget* graphWidget = tabw->widget((int)WIDGET_TAB_IDX::GRAPH_RENDER);
   graphWidget->setLayout(ui->graphHorizontalLayout);
+  ui->groupBoxText->setMaximumHeight(60);
 }
 
 Widget::~Widget()

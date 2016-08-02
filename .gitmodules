@@ -1,0 +1,9 @@
+[submodule "3rdparty/glm"]
+	path = 3rdparty/glm
+	url = https://github.com/g-truc/glm.git
+[submodule "3rdparty/junction"]
+	path = 3rdparty/junction
+	url = https://github.com/preshing/junction.git
+[submodule "3rdparty/turf"]
+	path = 3rdparty/turf
+	url = https://github.com/preshing/turf.git
