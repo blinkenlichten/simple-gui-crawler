@@ -60,8 +60,6 @@ Worker::Worker() : ctx(new WorkerCtx)
   jobfuncs[(int)WorkerAction::GREP_ONE] =
       [this](LinkedTask* task, Worker* w)
   {
-    //download one page:
-    jobfuncs[(int)WorkerAction::DOWNLOAD_ONE](task, w);
     //grep the grepExpr:
     boost::regex_search(task->pageContent, task->matchedText, task->grepExpr);
     //grep the http:// URLs and spawn new nodes:
@@ -80,11 +78,15 @@ Worker::Worker() : ctx(new WorkerCtx)
      while(nullptr != task->linksCounterPtr && w->isRunning()
            && task->linksCounterPtr->load() < task->maxLinkCount)
        {
-         jobfuncs[(int)WorkerAction::GREP_ONE](task, w);
+         //download one page:
+         jobfuncs[(int)WorkerAction::DOWNLOAD_ONE](task, w);
          if (task->pageContent.empty())
            {
              break;
            }
+         //grep page for text & URLs:
+         jobfuncs[(int)WorkerAction::GREP_ONE](task, w);
+
          //create linked list from grepped URLS:
          for(size_t cnt = 0; cnt < task->matchURL.size(); ++cnt)
            {
@@ -108,9 +110,9 @@ Worker::Worker() : ctx(new WorkerCtx)
       {
         std::unique_lock<std::mutex> lk(wctx->taskMutex);  (void)lk;
         wctx->cond.wait(lk);
-        for(auto iter = cmdList.begin(); iter != cmdList.end(); ++iter)
+        while(!cmdList.empty() && running)
           {
-            WorkerCommand& wcmd(cmdList.front());
+            WorkerCommand& wcmd(cmdList.back());
             if (WorkerAction::LOOP_QUIT == wcmd.command)
               {
                 running = false;
@@ -118,6 +120,7 @@ Worker::Worker() : ctx(new WorkerCtx)
               }
             jobfuncs[(int)wcmd.command](wcmd.task, this);
             wcmd.taskDisposer(wcmd.task);
+            cmdList.pop_back();
           }
         cmdList.clear();
       }
@@ -127,7 +130,8 @@ Worker::Worker() : ctx(new WorkerCtx)
 bool Worker::start()
 {
   try {
-    asio.reset(new boost::asio::io_service);
+    if (nullptr == asio)
+      asio.reset(new boost::asio::io_service);
     if (nullptr == thread)
       {
         thread.reset(new std::thread(jobsLoop, ctx.get()));
@@ -154,6 +158,23 @@ bool Worker::put(WorkerCommand command)
   try {
     std::lock_guard<std::mutex> lk(ctx->taskMutex);  (void)lk;
     cmdList.push_back(command);
+    ctx->cond.notify_all();
+  } catch(std::exception& e)
+  {
+    std::cerr << e.what();
+    return false;
+  }
+  return true;
+}
+
+bool Worker::put(WorkerCommand* commandsArray, unsigned cnt)
+{
+  try {
+    std::lock_guard<std::mutex> lk(ctx->taskMutex);  (void)lk;
+    for(unsigned c = 0; c < cnt; ++c)
+      {
+        cmdList.push_back(commandsArray[c]);
+      }
     ctx->cond.notify_all();
   } catch(std::exception& e)
   {

@@ -95,10 +95,15 @@ class Worker
 public:
   Worker();
   bool start(); //< start attached thread
-  void stop();  //< send command to stop and join the thread
+
+  /** send command to stop and join the thread.
+   * @return unfinished tasks vector. */
+  std::vector<WorkerCommand> stop();
+
   bool isRunning() const {return running;}
 
   virtual bool put(WorkerCommand command);
+  virtual bool put(WorkerCommand* commandsArray, unsigned cnt);
 
   /** The advantage over virtual method is that
    *  these can be swapped like a hot potato*/
