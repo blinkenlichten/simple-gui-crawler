@@ -16,11 +16,13 @@ TEMPLATE = app
 SOURCES += main.cpp\
         widget.cpp webgrep/client_http.cpp \
     webgrep/crawler.cpp \
-    webgrep/crawler_worker.cpp
+    webgrep/crawler_worker.cpp \
+    webgrep/linked_task.cpp
 
 HEADERS  += widget.h webgrep/client_http.hpp \
     webgrep/crawler.h \
-    webgrep/crawler_worker.h
+    webgrep/crawler_worker.h \
+    webgrep/linked_task.h
 
 FORMS    += widget.ui
 

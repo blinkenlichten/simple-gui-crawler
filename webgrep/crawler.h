@@ -23,6 +23,7 @@ public:
   void stop();
 
 
+  std::function<void(const std::string& what)> onException;
 private:
   class CrawlerPV;
   std::shared_ptr<CrawlerPV> pv;

@@ -5,10 +5,17 @@ namespace SimpleWeb {
 Client::Client(AsioSrvPtr asio, const std::string& host_port, unsigned short default_port)
   : asio_io_service(asio), asio_resolver(*asio_io_service), socket_error(false)
 {
-  cachedResponse.reset(new Response(shared_from_this()));
+  cachedResponse.reset(new Response());
   cachedResponse->status_code.reserve(64);
   cachedResponse->http_version.reserve(8);
+  setHost(host_port, default_port);
 
+  asio_endpoint = boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port);
+  socket = std::make_shared<TCPSocketType>(*asio_io_service);
+}
+
+void Client::setHost(const std::string& host_port, unsigned short default_port)
+{
   size_t host_end = host_port.find(':');
   if(host_end == std::string::npos) {
       host = host_port;
@@ -18,14 +25,17 @@ Client::Client(AsioSrvPtr asio, const std::string& host_port, unsigned short def
       host = host_port.substr(0, host_end);
       port = static_cast<unsigned short>(stoul(host_port.substr(host_end+1)));
     }
-
-  asio_endpoint = boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port);
-  socket = std::make_shared<TCPSocketType>(*asio_io_service);
 }
 
-void Client::connect()
+void Client::connect(std::string hostPort)
 {
-  if(socket_error || !socket->is_open()) {
+  bool reconnect = false;
+  if(!hostPort.empty() && std::string::npos == hostPort.find_first_of(host))
+    {
+      setHost(hostPort);
+      reconnect = true;
+    }
+  if( reconnect || socket_error || !socket->is_open()) {
       boost::asio::ip::tcp::resolver::query query(host, std::to_string(port));
       boost::asio::connect(*socket, asio_resolver.resolve(query));
 

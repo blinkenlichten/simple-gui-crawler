@@ -190,12 +190,15 @@
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="lineEdit">
+         <widget class="QLineEdit" name="maxLinksEdit">
           <property name="maximumSize">
            <size>
             <width>120</width>
             <height>40</height>
            </size>
+          </property>
+          <property name="text">
+           <string>256</string>
           </property>
           <property name="maxLength">
            <number>8</number>

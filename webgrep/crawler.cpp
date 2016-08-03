@@ -13,9 +13,11 @@ class Crawler::CrawlerPV
 public:
   CrawlerPV()
   {
+    firstPageTask = nullptr;
     workers.reserve(16);
     workers.push_back(std::make_shared<WebGrep::Worker>());
     maxLinksCount.store(4096);
+
 
     onMainSubtaskCompleted = [this](LinkedTask* task, WorkerPtr)
     {
@@ -58,37 +60,43 @@ public:
 Crawler::Crawler()
 {
   pv.reset(new CrawlerPV);
+  onException = [] (const std::string& what){ std::cerr << what << "\n"; };
 }
 //---------------------------------------------------------------
 bool Crawler::start(const std::string& url,
                     const std::string& grepRegex,
                     unsigned maxLinks, unsigned threadsNum)
 {
+
+  LinkedTask*& root(pv->firstPageTask);
+
   try {
     setMaxLinks(maxLinks);
     setThreadsNumber(threadsNum);
     std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
     //delete old nodes:
-    if (url != pv->firstPageTask->grepVars.targetUrl)
+    if (nullptr != root && url != root->grepVars.targetUrl)
       {
-        pv->destroyList(pv->firstPageTask);
+        pv->destroyList(root);
         pv->firstPageTask = nullptr;
       }
     //alloc toplevel node:
-    pv->firstPageTask = new LinkedTask;
-    GrepVars& g(pv->firstPageTask->grepVars);
+    root = new LinkedTask;
+    root->linksCounterPtr = &(pv->maxLinksCount);
+    GrepVars& g(root->grepVars);
     g.targetUrl = url;
     g.grepExpr = grepRegex;
   } catch(std::exception& e)
   {
     std::cerr << e.what() << std::endl;
+    this->onException(e.what());
     return false;
   }
 
   WorkerCommand cmd;
   //first task will grep one page and distribute subtasks to other work threads
   cmd.command =  WorkerAction::GREP_ONE;
-  cmd.task = pv->firstPageTask;
+  cmd.task = root;
   cmd.taskDisposer = [this](LinkedTask* task, WorkerPtr w)
   {
     //rearrange first task subitems to other threads:
@@ -105,8 +113,7 @@ bool Crawler::start(const std::string& url,
         pv->workers[item]->put(subcmd);
       }
   };
-  pv->workers[0]->put(cmd);
-  return true;
+  return pv->workers[0]->put(cmd);
 }
 
 void Crawler::pause()

@@ -30,6 +30,7 @@ public:
   Client(AsioSrvPtr asio, const std::string& host_port, unsigned short default_port = 80);
   virtual ~Client() {}
 
+  virtual void connect(std::string hostPort = "");
   std::shared_ptr<Response> request(const char* request_type,
                                     const char* path,
                                     boost::string_ref content="",
@@ -46,6 +47,7 @@ public:
   unsigned short port;
 
 protected:
+  void setHost(const std::string& host_port, unsigned short default_port = 80);
 
   std::shared_ptr<boost::asio::io_service> asio_io_service;
   boost::asio::ip::tcp::endpoint asio_endpoint;
@@ -54,7 +56,6 @@ protected:
   std::shared_ptr<TCPSocketType> socket;
   bool socket_error;
 
-  virtual void connect();
 
   void parse_response_header(std::shared_ptr<Response> response, std::istream& stream) const;
 
@@ -84,7 +85,6 @@ class Response {
     }
   };
 public:
-  std::shared_ptr<Client> clientPtr;
   std::string http_version, status_code;
   std::istream content;
   std::unordered_multimap<std::string, std::string, ihash, iequal_to> header;
@@ -92,7 +92,7 @@ public:
 private:
   boost::asio::streambuf content_buffer;
 
-  Response(const std::shared_ptr<Client>& cptr): clientPtr(cptr), content(&content_buffer)
+  Response(): content(&content_buffer)
   {
 
   }
