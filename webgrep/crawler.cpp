@@ -167,7 +167,7 @@ void Crawler::setThreadsNumber(unsigned nthreads)
     {
       --item;
       CmdVector_t& vec(taskLeftOvers[item]);
-      pv->workers[item % (pv->workers.size() - 1)]->put(&vec[0], vec.size());
+      pv->workers[item % (pv->workers.size())]->put(&vec[0], vec.size());
     }
 }
 //---------------------------------------------------------------

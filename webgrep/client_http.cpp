@@ -2,16 +2,16 @@
 
 namespace SimpleWeb {
 
-Client::Client(AsioSrvPtr asio, const std::string& host_port, unsigned short default_port)
-  : asio_io_service(asio), asio_resolver(*asio_io_service), socket_error(false)
+Client::Client(ClientConfig cfg)
+  : asio_resolver(*cfg.asio), socket_error(false)
 {
+  config = cfg;
   cachedResponse.reset(new Response());
   cachedResponse->status_code.reserve(64);
   cachedResponse->http_version.reserve(8);
-  setHost(host_port, default_port);
+  setHost(config.host_port, config.default_port);
 
   asio_endpoint = boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port);
-  socket = std::make_shared<TCPSocketType>(*asio_io_service);
 }
 
 void Client::setHost(const std::string& host_port, unsigned short default_port)
@@ -25,24 +25,43 @@ void Client::setHost(const std::string& host_port, unsigned short default_port)
       host = host_port.substr(0, host_end);
       port = static_cast<unsigned short>(stoul(host_port.substr(host_end+1)));
     }
+  config.isHttps = (std::string::npos != host_port.find_first_of("https://"));
 }
 
 void Client::connect(std::string hostPort)
 {
-  bool reconnect = false;
+  bool reconnect = (Response::STATUS::OKAY != cachedResponse->status);
   if(!hostPort.empty() && std::string::npos == hostPort.find_first_of(host))
     {
       setHost(hostPort);
       reconnect = true;
     }
-  if( reconnect || socket_error || !socket->is_open()) {
+  //case HTTP://
+//  if( !config.isHttps && (reconnect || socket_error || !socket->is_open())) {
+//      boost::asio::ip::tcp::resolver::query query(host, std::to_string(port));
+//      boost::asio::connect(*socket, asio_resolver.resolve(query));
+
+//      boost::asio::ip::tcp::no_delay option(true);
+//      socket->set_option(option);
+
+//      socket_error=false;
+//      return;
+//    }
+  //case HTTPS://
+  if(reconnect || nullptr == socket || socket_error || !socket->lowest_layer().is_open()) {
+      socket = std::make_shared<ssl_socket>(*config.asio, *config.asio_context);
+      socket->set_verify_mode(boost::asio::ssl::verify_none);
+
       boost::asio::ip::tcp::resolver::query query(host, std::to_string(port));
-      boost::asio::connect(*socket, asio_resolver.resolve(query));
+      boost::asio::connect(socket->lowest_layer(), asio_resolver.resolve(query));
 
       boost::asio::ip::tcp::no_delay option(true);
-      socket->set_option(option);
+      socket->lowest_layer().set_option(option);
 
-      socket_error=false;
+      boost::system::error_code err;
+      socket->handshake(boost::asio::ssl::stream_base::client,err);
+      std::cerr << err.message();
+      socket_error = false;
     }
 }
 
@@ -71,14 +90,15 @@ std::shared_ptr<Response> Client::request
   try {
     connect();
 
-    boost::asio::write(*socket, write_buffer);
+    size_t wr = boost::asio::write(*socket, write_buffer);
     if(content.size() > 0)
-      boost::asio::write(*socket, boost::asio::buffer(content.data(), content.size()));
+      wr = boost::asio::write(*socket, boost::asio::buffer(content.data(), content.size()));
 
   }
   catch(const std::exception& e) {
     socket_error=true;
-    throw std::invalid_argument(e.what());
+    cachedResponse->status = Response::STATUS::SOCKET_ERROR;
+    return cachedResponse;
   }
 
   return request_read();
@@ -117,7 +137,10 @@ std::shared_ptr<Response> Client::request(const char* request_type,
   }
   catch(const std::exception& e) {
     socket_error=true;
-    throw std::invalid_argument(e.what());
+    socket_error=true;
+    cachedResponse->status = Response::STATUS::SOCKET_ERROR;
+    std::cerr << e.what();
+    return cachedResponse;
   }
 
   return request_read();
@@ -205,9 +228,8 @@ std::shared_ptr<Response> Client::request_read()
   }
   catch(const std::exception& e) {
     socket_error=true;
-    throw std::invalid_argument(e.what());
+    std::cerr << e.what();
   }
-
   return response;
 }
 //-------------------------

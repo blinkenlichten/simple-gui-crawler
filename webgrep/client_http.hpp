@@ -8,6 +8,8 @@
 
 #include <boost/pool/pool_alloc.hpp>
 #include <boost/smart_ptr/detail/spinlock.hpp>
+#include <boost/asio/ssl/context.hpp>
+#include <boost/asio/ssl/stream.hpp>
 
 #include <unordered_map>
 #include <map>
@@ -17,17 +19,35 @@
 
 namespace SimpleWeb {
 
-typedef boost::asio::ip::tcp::socket TCPSocketType;
+typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket;
+typedef boost::asio::ip::tcp::socket socket_ip;
+typedef std::shared_ptr<boost::asio::io_service> AsioSrvPtr;
 
 class Response;
+//---------------------------------------------------------------
+struct ClientConfig
+{
+  ClientConfig() : isHttps(true),default_port(443)
+  {  }
+  AsioSrvPtr asio;
+  std::shared_ptr<boost::asio::ssl::context> asio_context;
 
+  //URL: http://host.com:8080 or https://host.com:443 or without https://
+  std::string host_port;
+  bool isHttps;
+  unsigned short default_port;
+};
+//---------------------------------------------------------------
+
+/** At the moment it support only SSL socket,
+ * it'll have to be templated back as in SimpleWebServer project ... later.
+*/
 class Client : public std::enable_shared_from_this<Client>
 {
 public:
-  typedef std::shared_ptr<boost::asio::io_service> AsioSrvPtr;
 
   /** @param host port:  somesite.com:8080/uri */
-  Client(AsioSrvPtr asio, const std::string& host_port, unsigned short default_port = 80);
+  Client(ClientConfig cfg);
   virtual ~Client() {}
 
   virtual void connect(std::string hostPort = "");
@@ -47,13 +67,14 @@ public:
   unsigned short port;
 
 protected:
-  void setHost(const std::string& host_port, unsigned short default_port = 80);
+  void setHost(const std::string& host_port, unsigned short default_port = 443);
 
-  std::shared_ptr<boost::asio::io_service> asio_io_service;
+  ClientConfig config;
   boost::asio::ip::tcp::endpoint asio_endpoint;
   boost::asio::ip::tcp::resolver asio_resolver;
+  bool isHttps;
 
-  std::shared_ptr<TCPSocketType> socket;
+  std::shared_ptr<SimpleWeb::ssl_socket> socket;
   bool socket_error;
 
 
@@ -85,6 +106,8 @@ class Response {
     }
   };
 public:
+  enum STATUS { OKAY, SOCKET_ERROR};
+  STATUS status;
   std::string http_version, status_code;
   std::istream content;
   std::unordered_multimap<std::string, std::string, ihash, iequal_to> header;
@@ -92,7 +115,7 @@ public:
 private:
   boost::asio::streambuf content_buffer;
 
-  Response(): content(&content_buffer)
+  Response(): status(STATUS::OKAY), content(&content_buffer)
   {
 
   }

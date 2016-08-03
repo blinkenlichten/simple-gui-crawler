@@ -3,6 +3,7 @@
 #include <iostream>
 #include "boost/regex.hpp"
 #include "boost/pool/pool_alloc.hpp"
+#include "boost/asio/ssl/context_base.hpp"
 
 namespace WebGrep {
 
@@ -34,20 +35,29 @@ struct WorkerCtx
 bool FuncDownloadOne(LinkedTask* task, WorkerPtr w)
 {
   std::shared_ptr<SimpleWeb::Client>& hclient(w->ctx->httpClient);
-  std::string& url(task->grepVars.targetUrl);
-  auto hostPort = ExtractHostPortHttp(url).data();
+  GrepVars& g(task->grepVars);
+  std::string& url(g.targetUrl);
+  w->httpConfig.host_port = ExtractHostPortHttp(url).data();
+  w->httpConfig.isHttps = (std::string::npos != g.targetUrl.find_first_of("https://"));
+
   if (nullptr == hclient)
     {
-      hclient = std::make_shared<SimpleWeb::Client>(w->asio, hostPort);
+      hclient = std::make_shared<SimpleWeb::Client>(w->httpConfig);
     }
   else
     {
-      hclient->connect(hostPort);
+      hclient->connect(w->httpConfig.host_port);
     }
-  std::shared_ptr<SimpleWeb::Response> response = hclient->request("GET", url.data());
+  std::shared_ptr<SimpleWeb::Response> response = hclient->request("GET", "/");
+  if (SimpleWeb::Response::STATUS::OKAY != response->status)
+    {
+      return false;
+    }
   //copy the page
   response->content >> task->grepVars.pageContent;
-  return !task->grepVars.pageContent.empty();
+  char* temp = nullptr;
+  task->grepVars.responseCode = ::strtol(response->status_code.data(),&temp, 10);
+  return 200 == task->grepVars.responseCode;
 }
 //---------------------------------------------------------------
 bool FuncGrepOne(LinkedTask* task, WorkerPtr w)
@@ -152,7 +162,30 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerPtr w)
     }
   return true;
 }
+void FuncWorkerLoop(const WorkerPtr& w)
+{
+  std::vector<WorkerCommand> cmdArray;
+  cmdArray.reserve(128);
 
+  while (w->isRunning())
+    {
+      {//wait for tasks and grab them when provided:
+        std::unique_lock<std::mutex> lk(w->ctx->taskMutex);  (void)lk;
+        w->ctx->cond.wait(lk);
+        cmdArray = w->cmdList;
+        w->cmdList.clear();
+      }
+      for(auto iter = cmdArray.begin();
+          iter != cmdArray.end() && w->isRunning() && (*iter).command != WorkerAction::LOOP_QUIT;
+          ++iter)
+        {
+          w->jobfuncs[(int)(*iter).command]((*iter).task, w);
+        }
+      for(WorkerCommand& job : cmdArray)
+        { job.taskDisposer(job.task, w); }
+    }
+}
+//---------------------------------------------------------------
 Worker::~Worker()
 {
   stop();
@@ -170,50 +203,32 @@ Worker::Worker() : ctx(new WorkerCtx)
   temp.reserve(128);
   onMaximumLinksCount = [](LinkedTask*, WorkerPtr){ };
 
-  //func: DOWNLOAD_ONE
+  //set functors
   jobfuncs[(int)WorkerAction::DOWNLOAD_ONE] = FuncDownloadOne;
-
-  //func: GREP_ONE
   jobfuncs[(int)WorkerAction::GREP_ONE] = FuncGrepOne;
-
-  //func: DOWNLOAD_GREP_RECURSIVE
   jobfuncs[(int)WorkerAction::DOWNLOAD_AND_GREP_RECURSIVE] = FuncDownloadGrepRecursive;
-
-  jobsLoop = [this](WorkerCtx* wctx)
-  {
-    std::vector<WorkerCommand> cmdArray;
-    cmdArray.reserve(128);
-    auto this_ptr = shared_from_this();
-
-    while (running)
-      {
-        {//wait for tasks and grab them when provided:
-          std::unique_lock<std::mutex> lk(wctx->taskMutex);  (void)lk;
-          wctx->cond.wait(lk);
-          cmdArray = cmdList;
-          cmdList.clear();
-        }
-        for(auto iter = cmdArray.begin(); iter != cmdArray.end() && running && (*iter).command != WorkerAction::LOOP_QUIT;
-            ++iter)
-          {
-            jobfuncs[(int)(*iter).command]((*iter).task, this_ptr);
-          }
-        for(WorkerCommand& job : cmdArray)
-          { job.taskDisposer(job.task, this_ptr); }
-      }
-  };
+  jobsLoop = FuncWorkerLoop;
 }
 
 bool Worker::start()
 {
   try {
-    if (nullptr == asio)
-      asio.reset(new boost::asio::io_service);
-    if (nullptr == thread)
+    if (nullptr == httpConfig.asio || nullptr == httpConfig.asio_context)
       {
-        thread.reset(new std::thread(jobsLoop, ctx.get()));
+        httpConfig.asio.reset(new boost::asio::io_service);
+        httpConfig.asio_context.reset(new boost::asio::ssl::context(boost::asio::ssl::context::sslv23));
+      }
+    if (nullptr != thread)
+      {
+        running = false;
+        {
+          std::unique_lock<std::mutex> lk(ctx->taskMutex); (void)lk;
+          ctx->cond.notify_all();
+        }
+        thread->join();
       }
     running = true;
+    thread.reset(new std::thread(jobsLoop, shared_from_this()));
   } catch(const std::exception& e)
   {
     std::cerr << e.what();
@@ -225,8 +240,12 @@ bool Worker::start()
 std::vector<WorkerCommand> Worker::stop()
 {
   running = false;
-  std::lock_guard<std::mutex> lk(ctx->taskMutex);  (void)lk;
-  ctx->cond.notify_all();
+  {
+    std::lock_guard<std::mutex> lk(ctx->taskMutex);  (void)lk;
+    ctx->cond.notify_all();
+  }
+  thread->join();
+  thread.reset();
   return cmdList;
 }
 

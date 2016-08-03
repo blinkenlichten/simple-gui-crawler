@@ -12,9 +12,12 @@ class Worker;
 
 struct GrepVars
 {
-  GrepVars() : pageIsReady(false) { }
+  GrepVars() : pageIsReady(false) {
+    responseCode = 0;
+  }
   std::string targetUrl;
   boost::regex grepExpr;  //< regexp to be matched
+  int responseCode;
   std::string pageContent;//< html content
 
   //contains(string::const_iterator) matched results of regexp in .grepExptr from .pageContent
@@ -24,7 +27,7 @@ struct GrepVars
   boost::smatch matchURL;
 
   //must be set to true when it's safe to access .pageContent from other threads:
-  bool pageIsReady;
+  volatile bool pageIsReady;
 };
 //---------------------------------------------------------------
 

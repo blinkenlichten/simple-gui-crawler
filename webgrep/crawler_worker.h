@@ -12,6 +12,7 @@
 #include <atomic>
 #include <array>
 #include "boost/regex.hpp"
+#include "boost/asio/ssl/context.hpp"
 #include "linked_task.h"
 
 
@@ -74,14 +75,15 @@ public:
    *  these can be swapped like a hot potato*/
   typedef std::function<bool(LinkedTask*, WorkerPtr)> JobFunc_t;
   std::array<JobFunc_t, (int)WorkerAction::NONE_LAST> jobfuncs;
-  std::function<void(WorkerCtx*)> jobsLoop;
+  std::function<void(const WorkerPtr&)> jobsLoop;
 
-  std::shared_ptr<boost::asio::io_service> asio;
+  SimpleWeb::ClientConfig httpConfig;
+
   std::shared_ptr<WorkerCtx> ctx;
-protected:
-  bool running;
-  std::shared_ptr<std::thread> thread;
   std::vector<WorkerCommand> cmdList;
+protected:
+  volatile bool running;
+  std::unique_ptr<std::thread> thread;
   std::string temp;
 };
 //---------------------------------------------------------------
