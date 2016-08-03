@@ -24,7 +24,7 @@ HEADERS  += widget.h webgrep/client_http.hpp \
 
 FORMS    += widget.ui
 
-LIBS += -lboost_system -lboost_container -lboost_atomic
+LIBS += -lboost_system -lboost_container -lboost_regex -lboost_atomic
 INCLUDEPATH += ./3rdparty/include ./3rdparty/glm
 
 unix{

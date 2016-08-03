@@ -38,17 +38,18 @@ void Client::connect()
 
 
 std::shared_ptr<Response> Client::request
-(const std::string& request_type,
- const std::string& path,
+(const char* request_type,
+ const char* path,
  boost::string_ref content,
  const std::map<std::string, std::string>& header )
 {
-  std::string corrected_path=path;
-  if(corrected_path=="")
-    corrected_path="/";
+  corrected_path = path;
+  if(corrected_path == "")
+    corrected_path = "/";
 
   std::ostream write_stream(&write_buffer);
-  write_stream << request_type << " " << corrected_path << " HTTP/1.1\r\n";
+  write_stream.write(request_type, strlen(request_type));
+  write_stream << " " << corrected_path << " HTTP/1.1\r\n";
   write_stream << "Host: " << host << "\r\n";
   for(auto& h: header) {
       write_stream << h.first << ": " << h.second << "\r\n";
@@ -73,12 +74,12 @@ std::shared_ptr<Response> Client::request
   return request_read();
 }
 
-std::shared_ptr<Response> Client::request(const std::string& request_type,
-                                          const std::string& path,
+std::shared_ptr<Response> Client::request(const char* request_type,
+                                          const char* path,
                                           std::iostream& content,
                                           const std::map<std::string, std::string>& header)
 {
-  std::string corrected_path = path;
+  corrected_path = path;
   if(corrected_path == "")
     corrected_path = "/";
 
@@ -87,7 +88,8 @@ std::shared_ptr<Response> Client::request(const std::string& request_type,
   content.seekp(0, std::ios::beg);
 
   std::ostream write_stream(&write_buffer);
-  write_stream << request_type << " " << corrected_path << " HTTP/1.1\r\n";
+  write_stream.write(request_type, strlen(request_type));
+  write_stream << " " << corrected_path << " HTTP/1.1\r\n";
   write_stream << "Host: " << host << "\r\n";
   for(auto& h: header) {
       write_stream << h.first << ": " << h.second << "\r\n";

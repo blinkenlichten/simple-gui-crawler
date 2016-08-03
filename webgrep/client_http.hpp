@@ -30,13 +30,13 @@ public:
   Client(AsioSrvPtr asio, const std::string& host_port, unsigned short default_port = 80);
   virtual ~Client() {}
 
-  std::shared_ptr<Response> request(const std::string& request_type,
-                                    const std::string& path="/",
+  std::shared_ptr<Response> request(const char* request_type,
+                                    const char* path,
                                     boost::string_ref content="",
                                     const std::map<std::string, std::string>& header=std::map<std::string, std::string>());
 
-  std::shared_ptr<Response> request(const std::string& request_type,
-                                    const std::string& path,
+  std::shared_ptr<Response> request(const char* request_type,
+                                    const char* path,
                                     std::iostream& content,
                                     const std::map<std::string, std::string>& header=std::map<std::string, std::string>());
 
@@ -60,7 +60,7 @@ protected:
 
   std::shared_ptr<Response> cachedResponse;
   std::shared_ptr<Response> request_read();
-
+  std::string corrected_path;
 };
 
 //-------------------------

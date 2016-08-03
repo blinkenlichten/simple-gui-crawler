@@ -17,9 +17,20 @@ Widget::Widget(QWidget *parent) :
   QWidget* graphWidget = tabw->widget((int)WIDGET_TAB_IDX::GRAPH_RENDER);
   graphWidget->setLayout(ui->graphHorizontalLayout);
   ui->groupBoxText->setMaximumHeight(60);
+
+  crawler = std::make_shared<WebGrep::Crawler>();
+
+  connect(ui->buttonStart, &QPushButton::clicked,
+          this, &Widget::onStart, Qt::DirectConnection);
 }
 
 Widget::~Widget()
 {
   delete ui;
+}
+
+void Widget::onStart()
+{
+  crawler->start("https://http://en.cppreference.com/w/cpp/atomic/atomic",
+                 "?(fetch)", 8, 16);
 }

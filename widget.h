@@ -2,6 +2,7 @@
 #define WIDGET_H
 
 #include <QWidget>
+#include "webgrep/crawler.h"
 
 namespace Ui {
   class Widget;
@@ -17,10 +18,14 @@ class Widget : public QWidget
 
 public:
   explicit Widget(QWidget *parent = 0);
-  ~Widget();
+  virtual ~Widget();
+
+public slots:
+  void onStart();
 
 private:
   Ui::Widget *ui;
+  std::shared_ptr<WebGrep::Crawler> crawler;
 };
 
 #endif // WIDGET_H
