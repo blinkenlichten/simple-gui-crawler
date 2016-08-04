@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include "boost/smart_ptr/detail/spinlock.hpp"
+#include "boost/noncopyable.hpp"
 
 extern "C" {
 #include <neon/ne_session.h>
@@ -17,8 +18,9 @@ namespace WebGrep {
 
 std::string ExtractHostPortHttp(const std::string& targetUrl);
 
-struct ClientCtx
+class ClientCtx : public boost::noncopyable
 {
+public:
   ClientCtx() : sess(nullptr) {
     response.reserve(512 * 1024);//512 kb
   }
@@ -30,8 +32,6 @@ struct ClientCtx
   ne_session* sess;
   std::string response;
   std::string host_and_port;
-
-  boost::detail::spinlock slock;
 };
 
 class Client

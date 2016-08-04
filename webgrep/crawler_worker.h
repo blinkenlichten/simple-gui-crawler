@@ -31,6 +31,8 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w);
 struct WorkerCtx
 {
   WorkerCtx() {running = true;}
+
+  //used to notify pending tasks on the current one:
   std::condition_variable cond;
   std::mutex taskMutex;
 

@@ -44,7 +44,7 @@ std::string Client::connect(const std::string& httpURL)
     return scheme;
   ctx = std::make_shared<ClientCtx>();
   ctx->host_and_port = ExtractHostPortHttp(httpURL);
-  int port = (std::string::npos != httpURL.find_first_of("https:"))? 443 : 80;
+  int port = (scheme == "http")? 80 : 443;
   ne_session* ne = nullptr;
   auto pos = ctx->host_and_port.find_first_of(':');
   if (std::string::npos != pos)
@@ -64,7 +64,7 @@ std::string Client::connect(const std::string& httpURL)
       ctx->host_and_port.append(temp.data());
     }
   ctx->sess = ne;
-  ne_set_useragent(ctx->sess, "Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:47.0) Gecko/20100101 Firefox/47.0");
+  ne_set_useragent(ctx->sess, "libneon-1");
   ne_ssl_set_verify(ne, &AcceptAllSSL, nullptr);
   return ctx->host_and_port;
 }
@@ -72,16 +72,14 @@ std::string Client::connect(const std::string& httpURL)
 static int httpResponseReader(void* userdata, const char* buf, size_t len)
 {
   ClientCtx* ctx = (ClientCtx*)userdata;
-  std::lock_guard<boost::detail::spinlock> lk(ctx->slock);
-  ctx->response.clear();
   ctx->response.append(buf, len);
   return 0;
 }
 
 Client::IssuedRequest Client::issueRequest(const char* method, const char* path)
 {
+  ctx->response.clear();
   auto rq = ne_request_create(ctx->sess, method, path);
-
   ne_add_response_body_reader(rq, ne_accept_always, httpResponseReader, (void*)ctx.get());
   Client::IssuedRequest out;
   out.ctx = ctx;

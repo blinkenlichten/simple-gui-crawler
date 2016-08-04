@@ -12,9 +12,8 @@ class WorkerCtx;
 
 struct GrepVars
 {
-  GrepVars() : pageIsReady(false) {
-    responseCode = 0;
-  }
+  GrepVars() : responseCode(0), pageIsReady(false), pageIsParsed(false)
+  { }
   std::string targetUrl;
   boost::regex grepExpr;  //< regexp to be matched
   int responseCode;
@@ -28,6 +27,7 @@ struct GrepVars
 
   //must be set to true when it's safe to access .pageContent from other threads:
   volatile bool pageIsReady;
+  volatile bool pageIsParsed;
 };
 //---------------------------------------------------------------
 
@@ -37,6 +37,7 @@ class LinkedTask : public boost::noncopyable
 public:
   LinkedTask() : level(0), root(nullptr), parent(nullptr)
   {
+    order = 0;
     maxLinkCount = 256;
     next.store(0, std::memory_order_release);
     child.store(0, std::memory_order_release);
@@ -45,8 +46,21 @@ public:
   //shallow copy without {.next, .targetUrl, .pageContent}
   void shallowCopy(const LinkedTask& other);
 
+  /** Create subtree (level + 1) at (LinkedTask)child.load() pointer.
+   * If subtree was already there, the old nodes will be pushed back
+   * on the same level.
+   *
+   * @param nodesCount : greater than 0
+   * @return quantity of nodes spawned;
+ */
+  size_t spawnChildNodes(size_t nodesCount);
+
+  /** Scan grepVars.matchURL[] and create next level subtree(subtasks).
+   * @return quantity of subtasks spawned. */
+  size_t spawnGreppedSubtasks();
+
   //level of this node
-  unsigned level;
+  unsigned level, order;
   LinkedTask* root;
   LinkedTask* parent;
 

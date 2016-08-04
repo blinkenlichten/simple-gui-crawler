@@ -31,6 +31,9 @@ LIBS += -lboost_system -lboost_container -lboost_context -lboost_thread\
 INCLUDEPATH += ./3rdparty/include ./3rdparty/glm
 
 unix{
-LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libturf.a \
-$$_PRO_FILE_PWD_/3rdparty/lib/libjunction.a
+  LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libneon.a
+}
+win32
+{
+
 }
