@@ -4,6 +4,7 @@
 #include <atomic>
 #include <mutex>
 #include <vector>
+#include <thread>
 #include "boost/lockfree/queue.hpp"
 #include "boost/thread/thread_pool.hpp"
 
@@ -133,12 +134,17 @@ void Crawler::setThreadsNumber(unsigned nthreads)
       std::cerr << "void Crawler::setThreadsNumber(unsigned nthreads) -> 0 value ignored.\n";
       return;
     }
-  std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
-  pv->workContexts.resize(nthreads);
-  for(WorkerCtxPtr& wp : pv->workContexts)
-    {
-      wp = std::make_shared<WorkerCtx>();
-    }
+  {
+    std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
+    for(WorkerCtxPtr& wp : pv->workContexts)
+      { wp->running = false; }
+    pv->workContexts.resize(nthreads);
+    for(WorkerCtxPtr& wp : pv->workContexts)
+      {
+        if (nullptr == wp)
+          wp = std::make_shared<WorkerCtx>();
+      }
+  }
   boost::executors::basic_thread_pool* newPool = new boost::executors::basic_thread_pool(nthreads);
   pv->workersPool.reset(newPool);
  }

@@ -7,59 +7,42 @@
 
 namespace WebGrep {
 
-static std::string ExtractHostPortHttp(const std::string& targetUrl)
-{
-  std::string url(targetUrl.data());
-  size_t hpos = url.find_first_of("://");
-  if (std::string::npos != hpos)
-    {
-      url = targetUrl.substr(hpos + sizeof("://")-1);
-    }
-  auto slash_pos = url.find_first_of('/');
-  if (std::string::npos != slash_pos)
-    {
-      url.resize(slash_pos);
-    }
-  return url;
-}
 //---------------------------------------------------------------
 //---------------------------------------------------------------
 bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
 {
-  std::shared_ptr<SimpleWeb::Client>& hclient(w->httpClient);
   GrepVars& g(task->grepVars);
   std::string& url(g.targetUrl);
-  w->httpConfig.host_port = ExtractHostPortHttp(url).data();
-  w->httpConfig.isHttps = (std::string::npos != g.targetUrl.find_first_of("https://"));
+  w->hostPort = w->httpClient.connect(url);
+  if(w->hostPort.empty())
+    return false;
 
-  if (nullptr == hclient)
-    {
-      hclient = std::make_shared<SimpleWeb::Client>(w->httpConfig);
-    }
-  else
-    {
-      hclient->connect(w->httpConfig.host_port);
-    }
-  std::shared_ptr<SimpleWeb::Response> response = hclient->request("GET", "/");
-  if (SimpleWeb::Response::STATUS::OKAY != response->status)
+  Client::IssuedRequest rq = w->httpClient.issueRequest("GET", "/");
+  int result = ne_request_dispatch(rq.req.get());
+  std::cerr << ne_get_error(rq.ctx->sess);
+  if (NE_OK != result)
     {
       return false;
     }
-  //copy the page
-  response->content >> task->grepVars.pageContent;
-  char* temp = nullptr;
-  task->grepVars.responseCode = ::strtol(response->status_code.data(),&temp, 10);
-  return 200 == task->grepVars.responseCode;
+
+  g.responseCode = ne_get_status(rq.req.get())->code;
+
+  if (200 != g.responseCode)
+    return false;
+
+  std::lock_guard<boost::detail::spinlock> lk(rq.ctx->slock);
+  g.pageContent = rq.ctx->response;
+  return true;
 }
 //---------------------------------------------------------------
 bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
 {
   GrepVars& g(task->grepVars);
-  if (g.pageContent.empty())
+  if (!g.pageIsReady)
     {
       FuncDownloadOne(task, w);
     }
-  if (g.pageContent.empty())
+  if (!g.pageIsReady || g.pageContent.empty())
     return false;
 
   //grep the grepExpr:
@@ -81,7 +64,7 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
       w->onMaximumLinksCount(task, w);
       return true;
     }
-  if (nullptr == task->linksCounterPtr || !w->isRunning())
+  if (nullptr == task->linksCounterPtr || !w->running)
     {
       return false;
     }

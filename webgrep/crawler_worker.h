@@ -33,11 +33,9 @@ struct WorkerCtx
   WorkerCtx() {running = true;}
   std::condition_variable cond;
   std::mutex taskMutex;
-  std::shared_ptr<SimpleWeb::Client> httpClient;
 
-  SimpleWeb::ClientConfig httpConfig;
-
-  std::string temp;
+  WebGrep::Client httpClient;
+  std::string hostPort;
 
   //when max. links sount reached. Set externally.
   std::function<void(LinkedTask*, WorkerCtxPtr)> onMaximumLinksCount;
