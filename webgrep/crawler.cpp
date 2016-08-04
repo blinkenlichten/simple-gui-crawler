@@ -5,6 +5,7 @@
 #include <mutex>
 #include <vector>
 #include "boost/lockfree/queue.hpp"
+#include "boost/thread/thread_pool.hpp"
 
 namespace WebGrep {
 
@@ -14,12 +15,9 @@ public:
   CrawlerPV()
   {
     firstPageTask = nullptr;
-    workers.reserve(16);
-    workers.push_back(std::make_shared<WebGrep::Worker>());
     maxLinksCount.store(4096);
 
-
-    onMainSubtaskCompleted = [this](LinkedTask* task, WorkerPtr)
+    onMainSubtaskCompleted = [this](LinkedTask* task, WorkerCtxPtr)
     {
       std::lock_guard<std::mutex> lk(wlistMutex); (void)lk;
       std::cout << "subtask completed: " << task->grepVars.targetUrl << "\n";
@@ -30,10 +28,7 @@ public:
   virtual ~CrawlerPV()
   {
     std::lock_guard<std::mutex> lk(wlistMutex); (void)lk;
-    for(std::shared_ptr<WebGrep::Worker>& val : workers)
-      {
-        val->stop();
-      }
+    workersPool->join();
     destroyList(firstPageTask);
   }
   static void destroyList(LinkedTask* head)
@@ -51,10 +46,11 @@ public:
   LinkedTask* firstPageTask;
 
   std::mutex wlistMutex;
-  std::vector<std::shared_ptr<WebGrep::Worker>> workers;
+  std::unique_ptr<boost::executors::basic_thread_pool> workersPool;
+  std::vector<WorkerCtxPtr> workContexts;
   std::atomic_uint maxLinksCount;
 
-  std::function<void(LinkedTask*, WorkerPtr)> onMainSubtaskCompleted;
+  std::function<void(LinkedTask*, WorkerCtxPtr)> onMainSubtaskCompleted;
 };
 //---------------------------------------------------------------
 Crawler::Crawler()
@@ -74,6 +70,10 @@ bool Crawler::start(const std::string& url,
     setMaxLinks(maxLinks);
     setThreadsNumber(threadsNum);
     std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
+    for(WorkerCtxPtr& ctx : pv->workContexts)
+      {
+        ctx->running = true;
+      }
     //delete old nodes:
     if (nullptr != root && url != root->grepVars.targetUrl)
       {
@@ -92,41 +92,32 @@ bool Crawler::start(const std::string& url,
     this->onException(e.what());
     return false;
   }
-
-  WorkerCommand cmd;
-  //first task will grep one page and distribute subtasks to other work threads
-  cmd.command =  WorkerAction::GREP_ONE;
-  cmd.task = root;
-  cmd.taskDisposer = [this](LinkedTask* task, WorkerPtr w)
-  {
-    //rearrange first task subitems to other threads:
-    std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
-    size_t item = 0;
-    for(auto nextLevelTree = WebGrep::ItemLoadAcquire(task->child);
-        nullptr != nextLevelTree;
-        ++item %= pv->workers.size(), nextLevelTree = WebGrep::ItemLoadAcquire(nextLevelTree->next) )
-      {
-        WorkerCommand subcmd;
-        subcmd.command = WorkerAction::DOWNLOAD_AND_GREP_RECURSIVE;
-        subcmd.task = nextLevelTree;
-        subcmd.taskDisposer = pv->onMainSubtaskCompleted;
-        pv->workers[item]->put(subcmd);
-      }
-  };
-  return pv->workers[0]->put(cmd);
-}
-
-void Crawler::pause()
-{
-  for(std::shared_ptr<WebGrep::Worker>& val : pv->workers)
-    {
-      val->stop();
-    }
+  //submit a root-task: get the first page and then follow it's content's links in new threads
+  auto fn = [this]() {
+      FuncGrepOne(pv->firstPageTask, pv->workContexts[0]);
+      //rearrange first task's spawned subitems to different independent contexts:
+      std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
+      size_t item = 0;
+      for(auto nextLevelTree = WebGrep::ItemLoadAcquire(pv->firstPageTask->child);
+          nullptr != nextLevelTree;
+          ++item %= pv->workContexts.size(), nextLevelTree = WebGrep::ItemLoadAcquire(nextLevelTree->next) )
+        {
+          auto ctx = pv->workContexts[item];
+          pv->workersPool->submit([nextLevelTree, ctx]
+                                  (){ FuncDownloadGrepRecursive(nextLevelTree, ctx); });
+        }
+    };
+  pv->workersPool->submit(fn);
+  return true;
 }
 
 void Crawler::stop()
 {
-  pause();
+  std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
+  for(WorkerCtxPtr& ctx : pv->workContexts)
+    {
+      ctx->running = false;
+    }
 }
 
 void Crawler::setMaxLinks(unsigned maxScanLinks)
@@ -143,33 +134,14 @@ void Crawler::setThreadsNumber(unsigned nthreads)
       return;
     }
   std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
-
-  typedef std::vector<WebGrep::WorkerCommand> CmdVector_t;
-  std::vector<CmdVector_t> taskLeftOvers;
-
-  if (nthreads < pv->workers.size())
+  pv->workContexts.resize(nthreads);
+  for(WorkerCtxPtr& wp : pv->workContexts)
     {
-      taskLeftOvers.resize(pv->workers.size() - nthreads);
-      for(unsigned cnt = 0; cnt < nthreads; ++cnt)
-        {
-          taskLeftOvers[cnt] = (pv->workers[cnt])->stop();
-        }
+      wp = std::make_shared<WorkerCtx>();
     }
-  pv->workers.resize(nthreads);
-  for(std::shared_ptr<WebGrep::Worker>& val : pv->workers)
-    {
-      if (nullptr == val)
-        val = std::make_shared<WebGrep::Worker>();
-      val->start();
-    }
-  //put leftover tasks into other threads
-  for(size_t item = taskLeftOvers.size(); item > 0; )
-    {
-      --item;
-      CmdVector_t& vec(taskLeftOvers[item]);
-      pv->workers[item % (pv->workers.size())]->put(&vec[0], vec.size());
-    }
-}
+  boost::executors::basic_thread_pool* newPool = new boost::executors::basic_thread_pool(nthreads);
+  pv->workersPool.reset(newPool);
+ }
 //---------------------------------------------------------------
 
 }//WebGrep

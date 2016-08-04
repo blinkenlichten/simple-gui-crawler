@@ -18,73 +18,36 @@
 
 namespace WebGrep {
 
-class TaskAllocator;
-
-enum class WorkerAction
-{
-  LOOP_QUIT,
-  /*downloads one http page via GET*/
-  DOWNLOAD_ONE,
-  /*spawns child nodes, downloads pages and greps again*/
-  DOWNLOAD_AND_GREP_RECURSIVE,
-  /*spaws child list of tasks with urls*/
-  GREP_ONE,
-  NONE_LAST
-};
-
 static boost::regex HttpExrp( "^(?:http://)?([^/]+)(?:/?.*/?)/(.*)$" );
 
-typedef std::shared_ptr<Worker> WorkerPtr;
-//---------------------------------------------------------------
-struct WorkerCommand
-{
-  WorkerCommand(): command(WorkerAction::NONE_LAST), task(nullptr)
-  {
-    taskDisposer = [](LinkedTask*, WorkerPtr){/*empty ftor*/};
-  }
-  WorkerAction command;
-
-  //must be disposed manually by taskDisposer(LinkedTask*);
-  LinkedTask* task;
-  std::function<void(LinkedTask*, WorkerPtr)> taskDisposer;
-};
 //---------------------------------------------------------------
 struct WorkerCtx;
+typedef std::shared_ptr<WorkerCtx> WorkerCtxPtr;
 //---------------------------------------------------------------
-
-class Worker : public std::enable_shared_from_this<Worker>
+bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w);
+bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w);
+bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w);
+//---------------------------------------------------------------
+struct WorkerCtx
 {
-public:
-  Worker();
-  virtual ~Worker();
-  bool start(); //< start attached thread
-
-  /** send command to stop and join the thread.
-   * @return unfinished tasks vector. */
-  std::vector<WorkerCommand> stop();
-
-  bool isRunning() const {return running;}
-
-  virtual bool put(WorkerCommand command);
-  virtual bool put(WorkerCommand* commandsArray, unsigned cnt);
-
-  //when max. links sount reached. Set externally.
-  std::function<void(LinkedTask*, WorkerPtr)> onMaximumLinksCount;
-
-  /** The advantage over virtual method is that
-   *  these can be swapped like a hot potato*/
-  typedef std::function<bool(LinkedTask*, WorkerPtr)> JobFunc_t;
-  std::array<JobFunc_t, (int)WorkerAction::NONE_LAST> jobfuncs;
-  std::function<void(const WorkerPtr&)> jobsLoop;
+  WorkerCtx() {running = true;}
+  std::condition_variable cond;
+  std::mutex taskMutex;
+  std::shared_ptr<SimpleWeb::Client> httpClient;
 
   SimpleWeb::ClientConfig httpConfig;
 
-  std::shared_ptr<WorkerCtx> ctx;
-  std::vector<WorkerCommand> cmdList;
-protected:
-  volatile bool running;
-  std::unique_ptr<std::thread> thread;
   std::string temp;
+
+  //when max. links sount reached. Set externally.
+  std::function<void(LinkedTask*, WorkerCtxPtr)> onMaximumLinksCount;
+
+  //the tasks can schedule subtasks
+  typedef std::function<void()> CallableFunc_t;
+  std::function<void(CallableFunc_t)> sheduleTask;
+
+  volatile bool running;//< used for pausing
+
 };
 //---------------------------------------------------------------
 

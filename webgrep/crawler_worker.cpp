@@ -23,18 +23,10 @@ static std::string ExtractHostPortHttp(const std::string& targetUrl)
   return url;
 }
 //---------------------------------------------------------------
-struct WorkerCtx
-{
-  WorkerCtx() { }
-  std::condition_variable cond;
-  std::mutex taskMutex;
-  std::shared_ptr<SimpleWeb::Client> httpClient;
-};
-
 //---------------------------------------------------------------
-bool FuncDownloadOne(LinkedTask* task, WorkerPtr w)
+bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
 {
-  std::shared_ptr<SimpleWeb::Client>& hclient(w->ctx->httpClient);
+  std::shared_ptr<SimpleWeb::Client>& hclient(w->httpClient);
   GrepVars& g(task->grepVars);
   std::string& url(g.targetUrl);
   w->httpConfig.host_port = ExtractHostPortHttp(url).data();
@@ -60,12 +52,12 @@ bool FuncDownloadOne(LinkedTask* task, WorkerPtr w)
   return 200 == task->grepVars.responseCode;
 }
 //---------------------------------------------------------------
-bool FuncGrepOne(LinkedTask* task, WorkerPtr w)
+bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
 {
   GrepVars& g(task->grepVars);
   if (g.pageContent.empty())
     {
-      w->jobfuncs[(int)WorkerAction::DOWNLOAD_ONE](task, w);
+      FuncDownloadOne(task, w);
     }
   if (g.pageContent.empty())
     return false;
@@ -82,7 +74,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerPtr w)
   return g.pageIsReady;
 }
 //---------------------------------------------------------------
-bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerPtr w)
+bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
 {
   if (task->maxLinkCount <= task->linksCounterPtr->load(std::memory_order_acquire))
     {
@@ -94,14 +86,14 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerPtr w)
       return false;
     }
   //download one page:
-  w->jobfuncs[(int)WorkerAction::DOWNLOAD_ONE](task, w);
+  FuncDownloadOne(task, w);
   GrepVars& g(task->grepVars);
   if (g.pageContent.empty())
     {
       return false;
     }
   //grep page for (text and URLs):
-  w->jobfuncs[(int)WorkerAction::GREP_ONE](task, w);
+  FuncGrepOne(task, w);
   if (g.matchURL.empty())
     {
       //no URLS then no subtree items.
@@ -141,145 +133,15 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerPtr w)
         task->childLevelSpawned(ItemLoadAcquire(task->child), w);
       }
   }
-  //for each item of subtree: call self recursively
+  //for each child node of subtree: schedule tasks to parse them too
   auto child = ItemLoadAcquire(task->child);
   for(; nullptr != child; child = ItemLoadAcquire(child->next))
     {
-      w->jobfuncs[(int)WorkerAction::DOWNLOAD_AND_GREP_RECURSIVE](child, w);
+      w->sheduleTask([child, w](){FuncDownloadGrepRecursive(child, w);});
     }
-
-  for(size_t cnt = 0; cnt < g.matchURL.size(); ++cnt)
-    {
-      task->linksCounterPtr->operator ++();
-      //grep it's content for .html links:
-      auto child = new LinkedTask();
-      child->shallowCopy(*task);
-      child->parent = task;
-
-      //call self(but with mangling by std::function):
-      w->jobfuncs[(int)WorkerAction::DOWNLOAD_AND_GREP_RECURSIVE]
-          (ItemLoadAcquire(task->next), w);
-    }
-  return true;
+   return true;
 }
-void FuncWorkerLoop(const WorkerPtr& w)
-{
-  std::vector<WorkerCommand> cmdArray;
-  cmdArray.reserve(128);
 
-  while (w->isRunning())
-    {
-      {//wait for tasks and grab them when provided:
-        std::unique_lock<std::mutex> lk(w->ctx->taskMutex);  (void)lk;
-        w->ctx->cond.wait(lk);
-        cmdArray = w->cmdList;
-        w->cmdList.clear();
-      }
-      for(auto iter = cmdArray.begin();
-          iter != cmdArray.end() && w->isRunning() && (*iter).command != WorkerAction::LOOP_QUIT;
-          ++iter)
-        {
-          w->jobfuncs[(int)(*iter).command]((*iter).task, w);
-        }
-      for(WorkerCommand& job : cmdArray)
-        { job.taskDisposer(job.task, w); }
-    }
-}
 //---------------------------------------------------------------
-Worker::~Worker()
-{
-  stop();
-  std::lock_guard<std::mutex>(ctx->taskMutex);
-  if (nullptr != thread)
-    {
-      thread->join();
-    }
-}
-
-Worker::Worker() : ctx(new WorkerCtx)
-{
-  running = false;
-  cmdList.reserve(128);
-  temp.reserve(128);
-  onMaximumLinksCount = [](LinkedTask*, WorkerPtr){ };
-
-  //set functors
-  jobfuncs[(int)WorkerAction::DOWNLOAD_ONE] = FuncDownloadOne;
-  jobfuncs[(int)WorkerAction::GREP_ONE] = FuncGrepOne;
-  jobfuncs[(int)WorkerAction::DOWNLOAD_AND_GREP_RECURSIVE] = FuncDownloadGrepRecursive;
-  jobsLoop = FuncWorkerLoop;
-}
-
-bool Worker::start()
-{
-  try {
-    if (nullptr == httpConfig.asio || nullptr == httpConfig.asio_context)
-      {
-        httpConfig.asio.reset(new boost::asio::io_service);
-        httpConfig.asio_context.reset(new boost::asio::ssl::context(boost::asio::ssl::context::sslv23));
-      }
-    if (nullptr != thread)
-      {
-        running = false;
-        {
-          std::unique_lock<std::mutex> lk(ctx->taskMutex); (void)lk;
-          ctx->cond.notify_all();
-        }
-        thread->join();
-      }
-    running = true;
-    thread.reset(new std::thread(jobsLoop, shared_from_this()));
-  } catch(const std::exception& e)
-  {
-    std::cerr << e.what();
-    return false;
-  }
-  return true;
-}
-
-std::vector<WorkerCommand> Worker::stop()
-{
-  running = false;
-  {
-    std::lock_guard<std::mutex> lk(ctx->taskMutex);  (void)lk;
-    ctx->cond.notify_all();
-  }
-  thread->join();
-  thread.reset();
-  return cmdList;
-}
-
-bool Worker::put(WorkerCommand command)
-{
-  try {
-    std::lock_guard<std::mutex> lk(ctx->taskMutex);  (void)lk;
-    cmdList.push_back(command);
-    ctx->cond.notify_all();
-  } catch(std::exception& e)
-  {
-    std::cerr << e.what();
-    return false;
-  }
-  return true;
-}
-
-bool Worker::put(WorkerCommand* commandsArray, unsigned cnt)
-{
-  try {
-    std::lock_guard<std::mutex> lk(ctx->taskMutex);  (void)lk;
-    for(unsigned c = 0; c < cnt; ++c)
-      {
-        cmdList.push_back(commandsArray[c]);
-      }
-    ctx->cond.notify_all();
-  } catch(std::exception& e)
-  {
-    std::cerr << e.what();
-    return false;
-  }
-  return true;
-}
-//---------------------------------------------------------------
-
 
 }//WebGrep

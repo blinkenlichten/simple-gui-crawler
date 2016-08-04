@@ -7,7 +7,7 @@
 
 namespace WebGrep {
 
-class Worker;
+class WorkerCtx;
 //---------------------------------------------------------------
 
 struct GrepVars
@@ -64,10 +64,10 @@ public:
   unsigned maxLinkCount;
   std::atomic_uint* linksCounterPtr;//not null
 
-  std::function<void(LinkedTask*, std::shared_ptr<Worker> w)> pageMatchFinishedCb;
+  std::function<void(LinkedTask*, std::shared_ptr<WorkerCtx> w)> pageMatchFinishedCb;
   /** Invoked when a new level of child nodes has spawned,
 */
-  std::function<void(LinkedTask*,std::shared_ptr<Worker> w)> childLevelSpawned;
+  std::function<void(LinkedTask*,std::shared_ptr<WorkerCtx> w)> childLevelSpawned;
 
 };
 //---------------------------------------------------------------
