@@ -21,6 +21,7 @@ public:
              unsigned maxLinks = 4096, unsigned threadsNum = 4);
   void pause();
   void stop();
+  void clear();
 
 
   std::function<void(const std::string& what)> onException;

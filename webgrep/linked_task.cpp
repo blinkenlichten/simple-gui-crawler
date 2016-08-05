@@ -15,7 +15,7 @@ void LinkedTask::shallowCopy(const LinkedTask& other)
 //    grepVars.allocatorPtr = og.allocatorPtr;
   }
 
-  maxLinkCount = other.maxLinkCount;
+  maxLinksCountPtr = other.maxLinksCountPtr;
   linksCounterPtr = other.linksCounterPtr;
   childLevelSpawned = other.childLevelSpawned;
   pageMatchFinishedCb = other.pageMatchFinishedCb;
@@ -71,14 +71,32 @@ size_t LinkedTask::spawnChildNodes(size_t nodesCount)
   return spawnCnt;
 }
 
-size_t LinkedTask::spawnGreppedSubtasks()
+size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port)
 {
-  size_t spawnedCnt = spawnChildNodes(grepVars.matchURL.size());
+  size_t spawnedCnt = spawnChildNodes(grepVars.matchURLVector.size());
   LinkedTask* node = ItemLoadAcquire(child);
+  std::string localLink;
   for(size_t c = 0; c < spawnedCnt && nullptr != node;
       ++c, node = ItemLoadAcquire(node->next))
     {
-      (node->grepVars.targetUrl) = grepVars.matchURL[c];
+      std::string& turl(node->grepVars.targetUrl);
+      turl.assign(grepVars.matchURLVector[c].first,
+                  grepVars.matchURLVector[c].second);
+      auto httpPos = turl.find_first_of("http");
+      if (std::string::npos == httpPos)
+        {
+          //deal with local href links: href=resource.html or leave if href="http://.."
+          auto quoteLast = turl.find_last_of('\"');
+          auto quotePos = turl.find_first_of('\"');
+          //grab http:// or https://
+          localLink = node->parent->grepVars.targetUrl.substr(0, 3 + grepVars.targetUrl.find_first_of("://"));
+          // append site.com:443
+          localLink += host_and_port;
+          // append local resource URI
+          localLink += "/";
+          localLink += turl.substr(quotePos, quoteLast);
+          turl = localLink;
+        }
     }
   return spawnedCnt;
 }

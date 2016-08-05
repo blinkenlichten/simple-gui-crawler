@@ -23,7 +23,8 @@ struct GrepVars
   boost::smatch matchedText;
 
   //contains matched URLs in .pageContent
-  boost::smatch matchURL;
+  typedef std::pair<std::string::const_iterator,std::string::const_iterator> CIteratorPair;
+  std::vector<CIteratorPair> matchURLVector;
 
   //must be set to true when it's safe to access .pageContent from other threads:
   volatile bool pageIsReady;
@@ -38,7 +39,8 @@ public:
   LinkedTask() : level(0), root(nullptr), parent(nullptr)
   {
     order = 0;
-    maxLinkCount = 256;
+    maxLinksCountPtr = nullptr;
+    linksCounterPtr = nullptr;
     next.store(0, std::memory_order_release);
     child.store(0, std::memory_order_release);
     childNodesCount.store(0, std::memory_order_release);
@@ -55,9 +57,9 @@ public:
  */
   size_t spawnChildNodes(size_t nodesCount);
 
-  /** Scan grepVars.matchURL[] and create next level subtree(subtasks).
+  /** Scan grepVars.matchURLVector[] and create next level subtree(subtasks).
    * @return quantity of subtasks spawned. */
-  size_t spawnGreppedSubtasks();
+  size_t spawnGreppedSubtasks(const std::string& host_and_port);
 
   //level of this node
   unsigned level, order;
@@ -76,7 +78,8 @@ public:
   GrepVars grepVars;
 
   unsigned maxLinkCount;
-  std::atomic_uint* linksCounterPtr;//not null
+  // you must have guaranteed that these are set & will live longer than any LinkedTask object
+  std::atomic_uint* linksCounterPtr, *maxLinksCountPtr;
 
   std::function<void(LinkedTask*, std::shared_ptr<WorkerCtx> w)> pageMatchFinishedCb;
   /** Invoked when a new level of child nodes has spawned,

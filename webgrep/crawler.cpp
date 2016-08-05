@@ -17,6 +17,7 @@ public:
   {
     firstPageTask = nullptr;
     maxLinksCount.store(4096);
+    currentLinksCount.store(0);
 
     onMainSubtaskCompleted = [this](LinkedTask* task, WorkerCtxPtr)
     {
@@ -28,12 +29,20 @@ public:
 
   virtual ~CrawlerPV()
   {
+    clear();
+  }
+
+  void clear()
+  {
     std::lock_guard<std::mutex> lk(wlistMutex); (void)lk;
     if (nullptr != workersPool)
       workersPool->join();
     destroyList(firstPageTask);
     delete firstPageTask;
+    firstPageTask = nullptr;
+    currentLinksCount.store(0);
   }
+
   static void destroyList(LinkedTask* head)
   {
     if (nullptr == head)
@@ -50,7 +59,7 @@ public:
   std::mutex wlistMutex;
   std::unique_ptr<boost::executors::basic_thread_pool> workersPool;
   std::vector<WorkerCtxPtr> workContexts;
-  std::atomic_uint maxLinksCount;
+  std::atomic_uint maxLinksCount, currentLinksCount;
 
   std::function<void(LinkedTask*, WorkerCtxPtr)> onMainSubtaskCompleted;
 };
@@ -59,6 +68,10 @@ Crawler::Crawler()
 {
   pv.reset(new CrawlerPV);
   onException = [] (const std::string& what){ std::cerr << what << "\n"; };
+}
+void Crawler::clear()
+{
+  pv->clear();
 }
 //---------------------------------------------------------------
 bool Crawler::start(const std::string& url,
@@ -84,7 +97,8 @@ bool Crawler::start(const std::string& url,
       }
     //alloc toplevel node:
     root = new LinkedTask;
-    root->linksCounterPtr = &(pv->maxLinksCount);
+    root->linksCounterPtr = &(pv->currentLinksCount);
+    root->maxLinksCountPtr = &(pv->maxLinksCount);
     GrepVars& g(root->grepVars);
     g.targetUrl = url;
     g.grepExpr = grepRegex;
@@ -102,7 +116,14 @@ bool Crawler::start(const std::string& url,
   auto fn = [this, worker]() {
       //this functor will wake-up pending task from another thread
       FuncGrepOne(pv->firstPageTask, worker);
-      pv->firstPageTask->spawnGreppedSubtasks();
+      pv->firstPageTask->spawnGreppedSubtasks(worker->hostPort);
+      std::string temp;
+      GrepVars& g(pv->firstPageTask->grepVars);
+      for(size_t cnt = 0; cnt < g.matchURLVector.size(); ++cnt)
+        {
+          temp.assign(g.matchURLVector[cnt].first, g.matchURLVector[cnt].second);
+          std::cerr << temp << std::endl;
+        }
 
       //ventillate subtasks:
       std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
@@ -115,11 +136,8 @@ bool Crawler::start(const std::string& url,
         {
           auto ctx = pv->workContexts[item];
           //submit recursive grep for each 1-st level subtask:
-//          pv->workersPool->submit([node, ctx]
-//                                  (){ FuncDownloadGrepRecursive(node, ctx); });
-          static std::mutex temp_mu;
-          std::lock_guard<std::mutex> lk(temp_mu);
-          std::cerr << "node: " << node->level << " " << node->order << "\n";
+          pv->workersPool->submit([node, ctx]
+                                  (){ FuncDownloadGrepRecursive(node, ctx); });
         }
     };
   pv->workersPool->submit(fn);

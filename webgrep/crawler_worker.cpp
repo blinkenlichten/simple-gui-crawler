@@ -48,8 +48,61 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
 
   //grep the grepExpr:
   boost::regex_search(g.pageContent, g.matchedText, g.grepExpr);
-  //grep the http:// URLs and spawn new nodes:
-  boost::regex_search(g.pageContent, g.matchURL, WebGrep::HttpExrp);
+
+  {//grep the http:// URLs and spawn new nodes:
+    try
+    {
+
+      std::string temp;
+      temp.reserve(256);
+
+      boost::regex_search(g.pageContent, w->matchURL, w->hrefGrepExpr);
+      for(size_t cnt = 0; cnt < w->matchURL.size(); ++cnt)
+        {
+          auto subitem = &(w->matchURL[cnt]);
+          auto diff = subitem->second - subitem->first;
+          temp.resize(diff);
+          auto shift = w->matchURL.position(cnt);
+          auto matchPageBegin = g.pageContent.begin() + shift;
+          temp.assign(matchPageBegin, matchPageBegin + shift);
+          auto hrefPos = temp.find((const char*)"href", 0, sizeof("href"));
+          if (std::string::npos != hrefPos)
+            {//case href
+              auto quotePos = temp.find_first_of('=',hrefPos);
+              quotePos = temp.find_first_of("\"", quotePos);
+              quotePos++;
+              //make new iterators that point to g.pageContent
+              auto begin = matchPageBegin + quotePos;
+              auto end = begin + temp.find_first_of("\"", quotePos);
+              std::string dbg1, dbg2;
+              dbg2.assign(begin, end);
+              std::cerr << "dbg:" << dbg1 << " " << dbg2 << std::endl;
+              w->matches[temp] = GrepVars::CIteratorPair(begin, end);
+            }
+          else
+            {//case just http://
+              auto page_pos = g.pageContent.begin() + w->matchURL.position(cnt);
+              w->matches[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
+            }
+          std::cerr << "temp url: " << temp << std::endl;
+        }
+      //put all together:
+      g.matchURLVector.clear();
+      for(auto iter = w->matches.begin(); iter != w->matches.end(); ++iter)
+        {
+          g.matchURLVector.push_back((*iter).second);
+        }
+
+    }
+    catch(const std::exception& ex)
+    {
+      std::cerr << ex.what() << std::endl;
+    }
+  }
+
+  task->linksCounterPtr->fetch_add(w->matches.size());
+  std::cerr << "links:" << task->linksCounterPtr->load() << "\n\n";
+
   g.pageIsParsed = true;
   if (task->pageMatchFinishedCb)
     {
@@ -67,7 +120,8 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
     }
 
   //max. links reached, lets stop the parsing
-  if (task->maxLinkCount <= task->linksCounterPtr->load(std::memory_order_acquire))
+  size_t cnt = task->linksCounterPtr->load(std::memory_order_acquire);
+  if (cnt >= task->maxLinksCountPtr->load(std::memory_order_acquire))
     {
       w->onMaximumLinksCount(task, w);
       return true;
@@ -79,14 +133,14 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
   if (!g.pageIsParsed)
     return false;
 
-  if (g.matchURL.empty())
+  if (g.matchURLVector.empty())
     {
       //no URLS then no subtree items.
       return true;
     }
 
   //create next level linked list from grepped URLS:
-  size_t n_subtasks = task->spawnGreppedSubtasks();
+  size_t n_subtasks = task->spawnGreppedSubtasks(w->hostPort);
 
   //emit signal that we've spawned a new level:
   if (0 != n_subtasks && nullptr != task->childLevelSpawned)

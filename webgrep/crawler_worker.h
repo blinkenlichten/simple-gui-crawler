@@ -18,8 +18,6 @@
 
 namespace WebGrep {
 
-static boost::regex HttpExrp( "^(?:http://)?([^/]+)(?:/?.*/?)/(.*)$" );
-
 //---------------------------------------------------------------
 struct WorkerCtx;
 typedef std::shared_ptr<WorkerCtx> WorkerCtxPtr;
@@ -30,7 +28,12 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w);
 //---------------------------------------------------------------
 struct WorkerCtx
 {
-  WorkerCtx() {running = true;}
+  WorkerCtx() {
+    hrefGrepExpr = boost::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"([^\"]*)\"",
+                                boost::regex::normal | boost::regbase::icase);
+    urlGrepExpr = boost::regex(" (http://|https://)[a-zA-Z0-9./?=_-]*");//boost::regex("(http|https)://[a-zA-Z0-9./?=_-]*");
+    running = true;
+  }
 
   //used to notify pending tasks on the current one:
   std::condition_variable cond;
@@ -38,6 +41,10 @@ struct WorkerCtx
 
   WebGrep::Client httpClient;
   std::string hostPort;
+  boost::regex urlGrepExpr, hrefGrepExpr;
+
+  boost::smatch matchURL;
+  std::map<std::string, GrepVars::CIteratorPair> matches;
 
   //when max. links sount reached. Set externally.
   std::function<void(LinkedTask*, WorkerCtxPtr)> onMaximumLinksCount;
