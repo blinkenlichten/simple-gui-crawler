@@ -25,6 +25,12 @@ while it's being processed and appended concurrently.
  */
 ```
 
-The class Crawler in webgrep/crawler.h works with the list using boost::basic_threadpool
+The class Crawler in "webgrep/crawler.h[.cpp]" works with the list using boost::basic_threadpool
 by pushing a functor objects in it and providing the results in a callbacks.
+This is kind of transactional ways of calling routines.
+
+Whole parsing boiler plate (with boost::regex) is located in files "webgrep/crawler_worker.h[.cpp]"
+
+
+![Screenshot](https://raw.githubusercontent.com/blinkenlichten/test03-v03/master/images/screenshot.png)
 
