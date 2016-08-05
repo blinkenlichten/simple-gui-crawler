@@ -96,15 +96,16 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
       //put all together:
       for(auto iter = w->matches.begin(); iter != w->matches.end(); ++iter)
         {
-          std::string& key((*item).first);
+          const std::string& key((*iter).first);
           //filter which content we allow to be scanned:
           if (key.size() > 1
               && key != g.targetUrl //avoid scanning self again
-              && (key[key.size() - 1]) == "/"
-              || std::string::npos != key.find_last_of(".htm")
-              || std::string::npos != key.find_last_of(".asp")
-              || std::string::npos != key.find_last_of(".php")
-              )
+              &&
+                ( (key[key.size() - 1]) == '/'
+                || std::string::npos != key.find_last_of(".htm")
+                || std::string::npos != key.find_last_of(".asp")
+                || std::string::npos != key.find_last_of(".php")
+                ) )
             {
               g.matchURLVector.push_back((*iter).second);
             }

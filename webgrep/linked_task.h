@@ -32,7 +32,12 @@ struct GrepVars
 };
 //---------------------------------------------------------------
 
-/** LinkedTask object is not thread-safe.*/
+/** LinkedTask : a tree list that is using atomic pointers
+ *  for child nodes (to be able to read without locking).
+ *  Once the node is constructed -- it is okay to read tree pointers concurrently,
+ *  the variable (GrapVars grepVars) must be carefully accessed on callbacks
+ *  when (volatile bool)grepVars.pageIsParse has been set, for example.
+ */
 class LinkedTask : public boost::noncopyable
 {
 public:

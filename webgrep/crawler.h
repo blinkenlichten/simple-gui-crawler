@@ -5,6 +5,8 @@
 
 namespace WebGrep {
 
+class LinkedTask;
+
 //----
 class Crawler
 {
@@ -25,6 +27,10 @@ public:
 
 
   std::function<void(const std::string& what)> onException;
+
+  //provides access no newly spawned tree node(one for each page)
+  //the (LinkedTask*) can be thread concurrently under some circumstances (see it's doc)
+  std::function<void(LinkedTask* rootNode, LinkedTask* node)> onPageScanned;
 private:
   class CrawlerPV;
   std::shared_ptr<CrawlerPV> pv;

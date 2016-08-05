@@ -1,6 +1,8 @@
 #include "widget.h"
 #include "ui_widget.h"
 
+#include "webgrep/linked_task.h"
+
 Widget::Widget(QWidget *parent) :
   QWidget(parent),
   ui(new Ui::Widget)
@@ -9,7 +11,7 @@ Widget::Widget(QWidget *parent) :
   ui->groupBoxText->setLayout(ui->horizontalLayoutText);
   QTabWidget* tabw = ui->tabWidget;
   QWidget* textWidget = tabw->widget((int)WIDGET_TAB_IDX::FOUND_TEXT);
-  textWidget->setLayout(ui->textHorizontalLayout);
+  textWidget->setLayout(ui->listVerticalLayout_2);
 
   QWidget* pageWidget = tabw->widget((int)WIDGET_TAB_IDX::PAGE_RENDER);
   pageWidget->setLayout(ui->pageHorizontalLayout);

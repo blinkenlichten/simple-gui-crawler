@@ -43,7 +43,7 @@ struct WorkerCtx
   std::string hostPort;
   boost::regex urlGrepExpr, hrefGrepExpr;
 
-  boost::smatch matchURL;
+  boost::smatch matchURL, matchHttp;
   std::map<std::string, GrepVars::CIteratorPair> matches;
 
   //when max. links sount reached. Set externally.

@@ -17,12 +17,14 @@ SOURCES += main.cpp\
         widget.cpp webgrep/client_http.cpp \
     webgrep/crawler.cpp \
     webgrep/crawler_worker.cpp \
-    webgrep/linked_task.cpp
+    webgrep/linked_task.cpp \
+    link_status_widget.cpp
 
 HEADERS  += widget.h webgrep/client_http.hpp \
     webgrep/crawler.h \
     webgrep/crawler_worker.h \
-    webgrep/linked_task.h
+    webgrep/linked_task.h \
+    link_status_widget.h
 
 FORMS    += widget.ui
 

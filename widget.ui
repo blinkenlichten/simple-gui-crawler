@@ -288,27 +288,40 @@
          <attribute name="title">
           <string>Found text</string>
          </attribute>
-         <widget class="QWidget" name="horizontalLayoutWidget_2">
+         <widget class="QWidget" name="verticalLayoutWidget">
           <property name="geometry">
            <rect>
-            <x>30</x>
-            <y>20</y>
-            <width>421</width>
-            <height>201</height>
+            <x>90</x>
+            <y>30</y>
+            <width>261</width>
+            <height>301</height>
            </rect>
           </property>
-          <layout class="QHBoxLayout" name="textHorizontalLayout">
+          <layout class="QVBoxLayout" name="listVerticalLayout_2">
            <item>
-            <widget class="QTreeWidget" name="treeWidget">
-             <column>
-              <property name="text">
-               <string notr="true">1</string>
-              </property>
-             </column>
+            <widget class="QLabel" name="label">
+             <property name="text">
+              <string>Pending tasks:</string>
+             </property>
             </widget>
+           </item>
+           <item>
+            <widget class="QListWidget" name="listWidget"/>
+           </item>
+           <item>
+            <widget class="QLabel" name="label_3">
+             <property name="text">
+              <string>Scanned pages:</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QListWidget" name="listWidget_2"/>
            </item>
           </layout>
          </widget>
+         <zorder>spacer</zorder>
+         <zorder>verticalLayoutWidget</zorder>
         </widget>
         <widget class="QWidget" name="pageRenderTab">
          <attribute name="title">
@@ -343,19 +356,6 @@
          </widget>
         </widget>
        </widget>
-      </item>
-      <item>
-       <spacer name="spacer">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
       </item>
      </layout>
     </item>
