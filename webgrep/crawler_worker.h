@@ -31,7 +31,7 @@ struct WorkerCtx
   WorkerCtx() {
     hrefGrepExpr = boost::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"([^\"]*)\"",
                                 boost::regex::normal | boost::regbase::icase);
-    urlGrepExpr = boost::regex(" (http://|https://)[a-zA-Z0-9./?=_-]*");//boost::regex("(http|https)://[a-zA-Z0-9./?=_-]*");
+    urlGrepExpr = boost::regex(" (http:|https:)//[a-zA-Z0-9./?=_-]*");//boost::regex("(http|https)://[a-zA-Z0-9./?=_-]*");
     running = true;
   }
 
