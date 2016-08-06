@@ -29,31 +29,38 @@ public:
 
   virtual ~CrawlerPV()
   {
-    clear();
+    try {
+      clear();
+    } catch(...)
+    { }
   }
 
   void clear()
   {
     std::lock_guard<std::mutex> lk(wlistMutex); (void)lk;
+    stop(false/*no lock*/);
     if (nullptr != workersPool)
-      workersPool->join();
-    destroyList(firstPageTask);
-    delete firstPageTask;
+      {
+        workersPool->close();
+        workersPool->join();
+      }
+    WebGrep::DeleteList(firstPageTask);
     firstPageTask = nullptr;
     currentLinksCount.store(0);
   }
 
-  static void destroyList(LinkedTask* head)
+  void stop(bool withMLock)
   {
-    if (nullptr == head)
-      return;
-    for(LinkedTask* next = ItemLoadAcquire(head->next);
-        nullptr != next; next = ItemLoadAcquire(head->next))
-      {
-        destroyList(next);
+    std::shared_ptr<std::lock_guard<std::mutex>> lk;
+    if(withMLock) {
+        lk = std::make_shared<std::lock_guard<std::mutex>> (wlistMutex);
       }
-    destroyList(ItemLoadAcquire(head->child));
+    for(WorkerCtxPtr& ctx : workContexts)
+      {
+        ctx->running = false;
+      }
   }
+
   LinkedTask* firstPageTask;
 
   std::mutex wlistMutex;
@@ -82,26 +89,27 @@ bool Crawler::start(const std::string& url,
   LinkedTask*& root(pv->firstPageTask);
 
   try {
+    stop();
     setMaxLinks(maxLinks);
     setThreadsNumber(threadsNum);
     std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
-    for(WorkerCtxPtr& ctx : pv->workContexts)
+    if (nullptr == root || root->grepVars.targetUrl != url)
       {
+        WebGrep::DeleteList(pv->firstPageTask);
+        pv->firstPageTask = nullptr;
+        //alloc toplevel node:
+        root = new LinkedTask;
+        root->linksCounterPtr = &(pv->currentLinksCount);
+        root->maxLinksCountPtr = &(pv->maxLinksCount);
+      }
+
+    GrepVars* g = &(root->grepVars);
+    g->targetUrl = url;
+    g->grepExpr = grepRegex;
+    for(WorkerCtxPtr& ctx : pv->workContexts)
+      {//enable workers to spawn subtasks e.g. "start"
         ctx->running = true;
       }
-    //delete old nodes:
-    if (nullptr != root && url != root->grepVars.targetUrl)
-      {
-        pv->destroyList(root);
-        pv->firstPageTask = nullptr;
-      }
-    //alloc toplevel node:
-    root = new LinkedTask;
-    root->linksCounterPtr = &(pv->currentLinksCount);
-    root->maxLinksCountPtr = &(pv->maxLinksCount);
-    GrepVars& g(root->grepVars);
-    g.targetUrl = url;
-    g.grepExpr = grepRegex;
   } catch(std::exception& e)
   {
     std::cerr << e.what() << std::endl;
@@ -140,23 +148,26 @@ bool Crawler::start(const std::string& url,
                                   (){ FuncDownloadGrepRecursive(node, ctx); });
         }
     };
-  pv->workersPool->submit(fn);
+  try {
+    pv->workersPool->submit(fn);
+  } catch(const std::exception& ex)
+  {
+    if(onException)
+      onException(ex.what());
+    return false;
+  }
   return true;
 }
 
 void Crawler::stop()
 {
-  std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
-  for(WorkerCtxPtr& ctx : pv->workContexts)
-    {
-      ctx->running = false;
-    }
+  pv->stop(true/*with lock*/);
 }
 
 void Crawler::setMaxLinks(unsigned maxScanLinks)
 {
   //sync with load(acquire)
-  pv->maxLinksCount.store(maxScanLinks, std::memory_order_release);
+  pv->maxLinksCount.store(maxScanLinks);
 }
 //---------------------------------------------------------------
 void Crawler::setThreadsNumber(unsigned nthreads)
@@ -166,10 +177,9 @@ void Crawler::setThreadsNumber(unsigned nthreads)
       std::cerr << "void Crawler::setThreadsNumber(unsigned nthreads) -> 0 value ignored.\n";
       return;
     }
-  {
+  try {
     std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
-    for(WorkerCtxPtr& wp : pv->workContexts)
-      { wp->running = false; }
+    pv->stop(false/*mutex lock*/);
     if (nullptr != pv->workersPool)
       {
         pv->workersPool->close();
@@ -182,9 +192,15 @@ void Crawler::setThreadsNumber(unsigned nthreads)
         if (nullptr == wp)
           wp = std::make_shared<WorkerCtx>();
       }
+
+    pv->workersPool.reset(new boost::executors::basic_thread_pool(nthreads));
+  } catch(const std::exception& ex)
+  {
+    std::cerr << ex.what() << std::endl;
+    if(onException) {
+      onException(ex.what());
+    }
   }
-  boost::executors::basic_thread_pool* newPool = new boost::executors::basic_thread_pool(nthreads);
-  pv->workersPool.reset(newPool);
  }
 //---------------------------------------------------------------
 

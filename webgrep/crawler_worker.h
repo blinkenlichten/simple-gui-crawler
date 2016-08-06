@@ -22,10 +22,28 @@ namespace WebGrep {
 struct WorkerCtx;
 typedef std::shared_ptr<WorkerCtx> WorkerCtxPtr;
 //---------------------------------------------------------------
+/** Downloads the page content and stores it in (GrepVars)task->grepVars
+ *  variable, (volatile bool)task->grepVars.pageIsReady will be set to TRUE
+ *  on successfull download; the page content will be stored in task->grepVars.pageContent
+*/
 bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w);
+
+/** Calls FuncDownloadOne(task, w) if FALSE == (volatile bool)task->grepVars.pageIsReady,
+ *  then if the download is successfull it'll grep the http:// and href= links from the page,
+ *  the results are stored in a container of type (vector<pair<string::const_iterator,string::const_iterator>>)
+ *  at variable (task->grepVars.matchURLVector and task->grepVars.matchTextVector)
+ *  where each pair of const iterators points to the begin and the end of matched strings
+ *  in task->grepVars.pageContent, the iterators are valid until grepVars.pageContent exists.
+*/
 bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w);
+
+/** Call FuncDownloadOne(task,w) multiple times: once for each new http:// URL
+ *  in a page's content. It won't use resursion, but will utilize appropriate
+ *  callbacks to put new tasks as functors in a multithreaded work queue.
+*/
 bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w);
 //---------------------------------------------------------------
+
 struct WorkerCtx
 {
   WorkerCtx() {
@@ -43,8 +61,7 @@ struct WorkerCtx
   std::string hostPort;
   boost::regex urlGrepExpr, hrefGrepExpr;
 
-  boost::smatch matchURL, matchHttp;
-  std::map<std::string, GrepVars::CIteratorPair> matches;
+  std::function<void(LinkedTask*, WorkerCtxPtr, const std::string& )> onException;
 
   //when max. links sount reached. Set externally.
   std::function<void(LinkedTask*, WorkerCtxPtr)> onMaximumLinksCount;

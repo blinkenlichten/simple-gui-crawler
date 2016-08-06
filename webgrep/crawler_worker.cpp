@@ -46,76 +46,97 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
   if (!g.pageIsReady || g.pageContent.empty())
     return false;
 
-  g.matchURLVector.clear();
-  //grep the grepExpr:
-  boost::regex_search(g.pageContent, g.matchedText, g.grepExpr);
+  //used internally for sorting & duplicates removal
+  std::map<std::string, GrepVars::CIteratorPair> matches;
 
-  {//grep the http:// URLs and spawn new nodes:
-    try
-    {
+  try
+  {
+    g.matchURLVector.clear();
+    g.matchTextVector.clear();
 
-      std::string temp;
-      temp.reserve(256);
-
-      //match href="URL"
-      boost::regex_search(g.pageContent, w->matchURL, w->hrefGrepExpr);
-      for(size_t matchIdx = 0; matchIdx < w->matchURL.size(); ++matchIdx)
+    //grep the grepExpr within pageContent:
+    {//push match results into the vector
+      boost::smatch matchedText;
+      boost::regex_search(g.pageContent, matchedText, g.grepExpr);
+      for(size_t matchIdx = 0; matchIdx < matchedText.size(); ++matchIdx)
         {
-          auto subitem = &(w->matchURL[matchIdx]);
+          auto subitem = &(matchedText[matchIdx]);
           auto diff = subitem->second - subitem->first;
-          temp.resize(diff);
-          auto shift = w->matchURL.position(matchIdx);
-          auto matchPageBegin = g.pageContent.begin() + shift;
-          temp.assign(matchPageBegin, matchPageBegin + shift);
-
-          const char href[] = "href";
-          size_t hrefPos = temp.find(href,0,4);
-
-          if (hrefPos < temp.size())
-            {//case href
-              auto quotePos = temp.find_first_of('=',hrefPos);
-              quotePos = temp.find_first_of('"', quotePos);
-              quotePos++;
-              //make new iterators that point to g.pageContent
-              auto begin = matchPageBegin + quotePos;
-              auto end = begin;
-              auto quote2 = temp.find_first_of('"', quotePos);
-              if (quote2 != std::string::npos)
-                end += (size_t)(quote2 - quotePos);
-              temp.assign(begin, end);
-              w->matches[temp] = GrepVars::CIteratorPair(begin, end);
-            }
-          else
-            {//case just http://
-              auto page_pos = g.pageContent.begin() + w->matchURL.position(matchIdx);
-              w->matches[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
-            }
+          auto begin = g.pageContent.begin() + matchedText.position(matchIdx);
+          g.matchTextVector.push_back(GrepVars::CIteratorPair(begin, begin + diff));
         }
-      //match http://
-      boost::regex_search(g.pageContent, w->matchHttp, w->urlGrepExpr);
-      //put all together:
-      for(auto iter = w->matches.begin(); iter != w->matches.end(); ++iter)
-        {
-          const std::string& key((*iter).first);
-          //filter which content we allow to be scanned:
-          if (key.size() > 1
-              && key != g.targetUrl //avoid scanning self again
-              &&
-                ( (key[key.size() - 1]) == '/'
-                || std::string::npos != key.find_last_of(".htm")
-                || std::string::npos != key.find_last_of(".asp")
-                || std::string::npos != key.find_last_of(".php")
-                ) )
-            {
-              g.matchURLVector.push_back((*iter).second);
-            }
-        }
+    }
 
-    }
-    catch(const std::exception& ex)
-    {
-      std::cerr << ex.what() << std::endl;
-    }
+    //grep the http:// URLs and spawn new nodes:
+    std::string temp;
+    temp.reserve(256);
+
+    boost::smatch matchURL;
+
+    //match href="URL"
+    boost::regex_search(g.pageContent, matchURL, w->hrefGrepExpr);
+    for(size_t matchIdx = 0; matchIdx < matchURL.size(); ++matchIdx)
+      {
+        auto subitem = &(matchURL[matchIdx]);
+        auto diff = subitem->second - subitem->first;
+        temp.resize(diff);
+        auto shift = matchURL.position(matchIdx);
+        auto matchPageBegin = g.pageContent.begin() + shift;
+        temp.assign(matchPageBegin, matchPageBegin + shift);
+
+        const char href[] = "href";
+        size_t hrefPos = temp.find(href,0,4);
+
+        if (hrefPos < temp.size())
+          {//case href
+            auto quotePos = temp.find_first_of('=',hrefPos);
+            quotePos = temp.find_first_of('"', quotePos);
+            quotePos++;
+            //make new iterators that point to g.pageContent
+            auto begin = matchPageBegin + quotePos;
+            auto end = begin;
+            auto quote2 = temp.find_first_of('"', quotePos);
+            if (quote2 != std::string::npos)
+              end += (size_t)(quote2 - quotePos);
+            temp.assign(begin, end);
+            matches[temp] = GrepVars::CIteratorPair(begin, end);
+          }
+        else
+          {//case just http://
+            auto page_pos = g.pageContent.begin() + matchURL.position(matchIdx);
+            matches[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
+          }
+      }
+    //match http://
+    //      boost::regex_search(g.pageContent, matchHttp, w->urlGrepExpr);
+
+    //put all together:
+    for(auto iter = matches.begin(); iter != matches.end(); ++iter)
+      {
+        const std::string& key((*iter).first);
+        //filter which content we allow to be scanned:
+        if (key.size() > 1
+            && key != g.targetUrl //avoid scanning self again
+            &&
+            ( (key[key.size() - 1]) == '/'
+              || std::string::npos != key.find_last_of(".htm")
+              || std::string::npos != key.find_last_of(".asp")
+              || std::string::npos != key.find_last_of(".php")
+              ) )
+          {
+            g.matchURLVector.push_back((*iter).second);
+          }
+      }
+    //end grep http
+
+  }
+  catch(const std::exception& ex)
+  {
+    std::cerr << ex.what() << std::endl;
+    if (w->onException)
+      {
+        w->onException(task, w, ex.what());
+      }
   }
 
   task->linksCounterPtr->fetch_add(g.matchURLVector.size());

@@ -3,6 +3,48 @@
 #include <iostream>
 
 namespace WebGrep {
+
+void TraverseFunc(LinkedTask* head, void* additional,
+                  void(*func)(LinkedTask*, void*))
+{
+  if (nullptr == head || nullptr == func)
+    return;
+  for(LinkedTask* next = ItemLoadAcquire(head->next);
+      nullptr != next; next = ItemLoadAcquire(head->next))
+    {
+      func(next, additional);
+    }
+  func(ItemLoadAcquire(head->child), additional);
+}
+
+// Recursively traverse the list and call functor on each item
+void TraverseFunctor(LinkedTask* head, void* additional,
+                     std::function<void(LinkedTask*, void* additional/*nullptr*/)> func)
+{
+  if (nullptr == head || nullptr == func)
+    return;
+  for(LinkedTask* next = ItemLoadAcquire(head->next);
+      nullptr != next; next = ItemLoadAcquire(head->next))
+    {
+      func(next, additional);
+    }
+  func(ItemLoadAcquire(head->child), additional);
+}
+
+static void DeleteCall(LinkedTask* item, void* data)
+{
+  (void)data;
+  delete item;
+}
+
+// Free memory recursively.
+void DeleteList(LinkedTask* head)
+{
+  TraverseFunc(head, nullptr, &DeleteCall);
+  delete head;
+}
+
+
 //---------------------------------------------------------------
 void LinkedTask::shallowCopy(const LinkedTask& other)
 {

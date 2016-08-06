@@ -14,23 +14,42 @@ struct GrepVars
 {
   GrepVars() : responseCode(0), pageIsReady(false), pageIsParsed(false)
   { }
+
   std::string targetUrl;
   boost::regex grepExpr;  //< regexp to be matched
-  int responseCode;
+  int responseCode;       //< last HTTP GET response code
   std::string pageContent;//< html content
 
-  //contains(string::const_iterator) matched results of regexp in .grepExptr from .pageContent
-  boost::smatch matchedText;
-
   //contains matched URLs in .pageContent
-  typedef std::pair<std::string::const_iterator,std::string::const_iterator> CIteratorPair;
-  std::vector<CIteratorPair> matchURLVector;
+  typedef std::string::const_iterator COT_t;
+  typedef std::pair<COT_t,COT_t> CIteratorPair;
+
+  /** After (TRUE == pageIsParsed) matchURLVector will contain const_iterator
+   *  that point to a matched string in this->pageContent;
+   *  similarly matchTextVector will get iterators pointing to this->pageContent
+   *  where text search conditions has met.
+ */
+  std::vector<CIteratorPair> matchURLVector, matchTextVector;
 
   //must be set to true when it's safe to access .pageContent from other threads:
   volatile bool pageIsReady;
   volatile bool pageIsParsed;
 };
 //---------------------------------------------------------------
+class LinkedTask;
+
+// Recursively traverse the list and call a function each item
+void TraverseFunc(LinkedTask* head, void* additional,
+                  void(*func)(LinkedTask*, void*));
+
+// Recursively traverse the list and call functor on each item
+void TraverseFunctor(LinkedTask* head, void* additional,
+                     std::function<void(LinkedTask*, void* additional)>);
+
+// Free memory recursively. NOT THREAD SAFE! Must be syncronized.
+void DeleteList(LinkedTask* head);
+//---------------------------------------------------------------
+
 
 /** LinkedTask : a tree list that is using atomic pointers
  *  for child nodes (to be able to read without locking).
