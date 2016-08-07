@@ -30,6 +30,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
   if (200 != g.responseCode)
     return false;
 
+  std::lock_guard<GrepVars::PageLock_t> lk(g.pageLock); (void)lk;
   g.pageContent = rq.ctx->response;
 //  std::cerr << g.pageContent << std::endl;
   g.pageIsReady = true;
@@ -45,6 +46,14 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
     }
   if (!g.pageIsReady || g.pageContent.empty())
     return false;
+
+  /**TODO: figure out how much memory allocations boost::regex or std::regex can
+   * make while parsing the regular expressions.
+   *  Maybe I should use PCRE or similar with C POD containers
+   *  and non-singleton pool allocators
+   *  (boost::pool_allocator is a singleton, not good).
+   *
+ **/
 
   //used internally for sorting & duplicates removal
   std::map<std::string, GrepVars::CIteratorPair> matches;
@@ -142,9 +151,9 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
   task->linksCounterPtr->fetch_add(g.matchURLVector.size());
 
   g.pageIsParsed = true;
-  if (task->pageMatchFinishedCb)
+  if (w->pageMatchFinishedCb)
     {
-      task->pageMatchFinishedCb(task, w);
+      w->pageMatchFinishedCb(task, w);
     }
   return g.pageIsReady && g.pageIsParsed;
 }
@@ -181,9 +190,9 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
   size_t n_subtasks = task->spawnGreppedSubtasks(w->hostPort);
 
   //emit signal that we've spawned a new level:
-  if (0 != n_subtasks && nullptr != task->childLevelSpawned)
+  if (0 != n_subtasks && nullptr != w->childLevelSpawned)
     {
-      task->childLevelSpawned(ItemLoadAcquire(task->child), w);
+      w->childLevelSpawned(ItemLoadAcquire(task->child), w);
     }
 
   //for each child node of subtree: schedule tasks to parse them too

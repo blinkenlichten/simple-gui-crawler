@@ -44,11 +44,14 @@ public:
 
 
   //set this to handle internal exceptions(like std::bad_alloc), must not throw
-  std::function<void(const std::string& what)> onException;
+  typedef std::function<void(const std::string& what)> OnExceptionCallback_t;
 
-  //provides access no newly spawned tree node(one for each page)
-  //the (LinkedTask*) can be thread concurrently under some circumstances (see it's doc)
-  std::function<void(LinkedTask* rootNode, LinkedTask* node)> onPageScanned;
+  /** The functor type describes access no newly spawned tree node(one for each page)
+  the (LinkedTask*) can be read concurrently under some circumstances (see it's doc)*/
+  typedef std::function<void(std::shared_ptr<LinkedTask> rootNode, LinkedTask* node)> OnPageScannedCallback_t;
+
+  void setExceptionCB(OnExceptionCallback_t func);
+  void setPageScannedCB(OnPageScannedCallback_t func);
 private:
   class CrawlerPV;
   std::shared_ptr<CrawlerPV> pv;

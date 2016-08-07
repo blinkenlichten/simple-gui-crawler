@@ -63,14 +63,22 @@ struct WorkerCtx
 
   std::function<void(LinkedTask*, WorkerCtxPtr, const std::string& )> onException;
 
-  //when max. links sount reached. Set externally.
-  std::function<void(LinkedTask*, WorkerCtxPtr)> onMaximumLinksCount;
-
   //the tasks can schedule subtasks
   typedef std::function<void()> CallableFunc_t;
   std::function<void(CallableFunc_t)> sheduleTask;
 
-  volatile bool running;//< used for pausing
+  //callbacks, all three are set externally:
+
+  //when max. links count reached.
+  std::function<void(LinkedTask*, WorkerCtxPtr)> onMaximumLinksCount;
+
+  std::function<void(LinkedTask*, std::shared_ptr<WorkerCtx> w)> pageMatchFinishedCb;
+
+  /** Invoked when a new level of child nodes has spawned, */
+  std::function<void(LinkedTask*,std::shared_ptr<WorkerCtx> w)> childLevelSpawned;
+
+
+  volatile bool running;//< used for subtask spawn pausing
 
 };
 //---------------------------------------------------------------

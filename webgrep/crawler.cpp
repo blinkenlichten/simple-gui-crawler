@@ -44,8 +44,7 @@ public:
         workersPool->close();
         workersPool->join();
       }
-    WebGrep::DeleteList(firstPageTask);
-    firstPageTask = nullptr;
+    firstPageTask.reset();
     currentLinksCount.store(0);
   }
 
@@ -61,7 +60,10 @@ public:
       }
   }
 
-  LinkedTask* firstPageTask;
+  Crawler::OnExceptionCallback_t onException;
+  Crawler::OnPageScannedCallback_t onPageScanned;
+
+  std::shared_ptr<LinkedTask> firstPageTask;
 
   std::mutex wlistMutex;
   std::unique_ptr<boost::executors::basic_thread_pool> workersPool;
@@ -71,10 +73,20 @@ public:
   std::function<void(LinkedTask*, WorkerCtxPtr)> onMainSubtaskCompleted;
 };
 //---------------------------------------------------------------
+void Crawler::setExceptionCB(OnExceptionCallback_t func)
+{
+  pv->onException = func;
+}
+
+void Crawler::setPageScannedCB(OnPageScannedCallback_t func)
+{
+  pv->onPageScanned = func;
+}
+
 Crawler::Crawler()
 {
-  pv.reset(new CrawlerPV);
-  onException = [] (const std::string& what){ std::cerr << what << "\n"; };
+  pv = std::make_shared<CrawlerPV>();
+  pv->onException = [] (const std::string& what){ std::cerr << what << "\n"; };
 }
 void Crawler::clear()
 {
@@ -86,7 +98,7 @@ bool Crawler::start(const std::string& url,
                     unsigned maxLinks, unsigned threadsNum)
 {
 
-  LinkedTask*& root(pv->firstPageTask);
+  std::shared_ptr<LinkedTask>& root(pv->firstPageTask);
 
   try {
     stop();
@@ -95,10 +107,11 @@ bool Crawler::start(const std::string& url,
     std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
     if (nullptr == root || root->grepVars.targetUrl != url)
       {
-        WebGrep::DeleteList(pv->firstPageTask);
         pv->firstPageTask = nullptr;
         //alloc toplevel node:
-        root = new LinkedTask;
+        root.reset(new LinkedTask,
+                   [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
+
         root->linksCounterPtr = &(pv->currentLinksCount);
         root->maxLinksCountPtr = &(pv->maxLinksCount);
       }
@@ -106,14 +119,21 @@ bool Crawler::start(const std::string& url,
     GrepVars* g = &(root->grepVars);
     g->targetUrl = url;
     g->grepExpr = grepRegex;
+    auto pv_copy = pv;
     for(WorkerCtxPtr& ctx : pv->workContexts)
       {//enable workers to spawn subtasks e.g. "start"
+        ctx->childLevelSpawned   = [pv_copy](LinkedTask* node, std::shared_ptr<WorkerCtx>)
+        {
+          if (pv_copy)
+            pv_copy->onPageScanned(pv_copy->firstPageTask, node);
+        };
         ctx->running = true;
       }
   } catch(std::exception& e)
   {
     std::cerr << e.what() << std::endl;
-    this->onException(e.what());
+    if (pv->onException)
+      pv->onException(e.what());
     return false;
   }
 
@@ -123,7 +143,7 @@ bool Crawler::start(const std::string& url,
   //submit a root-task: get the first page and then follow it's content's links in new threads
   auto fn = [this, worker]() {
       //this functor will wake-up pending task from another thread
-      FuncGrepOne(pv->firstPageTask, worker);
+      FuncGrepOne(pv->firstPageTask.get(), worker);
       pv->firstPageTask->spawnGreppedSubtasks(worker->hostPort);
       std::string temp;
       GrepVars& g(pv->firstPageTask->grepVars);
@@ -152,8 +172,8 @@ bool Crawler::start(const std::string& url,
     pv->workersPool->submit(fn);
   } catch(const std::exception& ex)
   {
-    if(onException)
-      onException(ex.what());
+    if(pv->onException)
+      pv->onException(ex.what());
     return false;
   }
   return true;
@@ -197,8 +217,8 @@ void Crawler::setThreadsNumber(unsigned nthreads)
   } catch(const std::exception& ex)
   {
     std::cerr << ex.what() << std::endl;
-    if(onException) {
-      onException(ex.what());
+    if(pv->onException) {
+      pv->onException(ex.what());
     }
   }
  }

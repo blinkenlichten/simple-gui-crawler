@@ -43,24 +43,33 @@ void DeleteList(LinkedTask* head)
   TraverseFunc(head, nullptr, &DeleteCall);
   delete head;
 }
+//---------------------------------------------------------------
+LinkedTask::LinkedTask() : level(0)
+{
+  order = 0;
+  maxLinksCountPtr = nullptr;
+  linksCounterPtr = nullptr;
+  next.store(0);
+  child.store(0);
+  root.store(0);
+  parent.store(0);
+  childNodesCount.store(0);
+}
+
 
 
 //---------------------------------------------------------------
 void LinkedTask::shallowCopy(const LinkedTask& other)
 {
   level = other.level;
-  root = other.root;
-  parent = other.parent;
+  root.store(other.root.load());
+  parent.store(other.parent.load());
   {
-    const GrepVars& og(other.grepVars);
-    grepVars.grepExpr = og.grepExpr;
-//    grepVars.allocatorPtr = og.allocatorPtr;
+    grepVars.grepExpr = other.grepVars.grepExpr;
   }
 
   maxLinksCountPtr = other.maxLinksCountPtr;
   linksCounterPtr = other.linksCounterPtr;
-  childLevelSpawned = other.childLevelSpawned;
-  pageMatchFinishedCb = other.pageMatchFinishedCb;
 }
 
 size_t LinkedTask::spawnChildNodes(size_t nodesCount)
@@ -79,7 +88,7 @@ size_t LinkedTask::spawnChildNodes(size_t nodesCount)
     item = (LinkedTask*)child.load();
     {
       item->shallowCopy(*this);
-      item->parent = this;
+      item->parent.store((std::uintptr_t)this);
       item->level = 1u + this->level;
       item->order = this->childNodesCount.load(std::memory_order_acquire);
       this->childNodesCount.fetch_add(1);
@@ -92,7 +101,7 @@ size_t LinkedTask::spawnChildNodes(size_t nodesCount)
         item = (LinkedTask*)item->next.load(std::memory_order_relaxed);
         {
           item->shallowCopy(*this);
-          item->parent = this;
+          item->parent.store((std::uintptr_t)this);
           item->level = 1u + this->level;
           item->order = this->childNodesCount.load(std::memory_order_acquire);
           this->childNodesCount.fetch_add(1);
@@ -131,7 +140,8 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port)
           auto quoteLast = turl.find_last_of('\"');
           auto quotePos = turl.find_first_of('\"');
           //grab http:// or https://
-          localLink = node->parent->grepVars.targetUrl.substr(0, 3 + grepVars.targetUrl.find_first_of("://"));
+          auto nodeParent = ItemLoadAcquire(node->parent);
+          localLink = nodeParent->grepVars.targetUrl.substr(0, 3 + grepVars.targetUrl.find_first_of("://"));
           // append site.com:443
           localLink += host_and_port;
           // append local resource URI

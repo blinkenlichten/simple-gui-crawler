@@ -18,6 +18,9 @@ struct GrepVars
   std::string targetUrl;
   boost::regex grepExpr;  //< regexp to be matched
   int responseCode;       //< last HTTP GET response code
+
+  typedef boost::detail::spinlock PageLock_t;
+  PageLock_t pageLock;    //< lock this to safely read this->pageContent.
   std::string pageContent;//< html content
 
   //contains matched URLs in .pageContent
@@ -60,15 +63,8 @@ void DeleteList(LinkedTask* head);
 class LinkedTask : public boost::noncopyable
 {
 public:
-  LinkedTask() : level(0), root(nullptr), parent(nullptr)
-  {
-    order = 0;
-    maxLinksCountPtr = nullptr;
-    linksCounterPtr = nullptr;
-    next.store(0, std::memory_order_release);
-    child.store(0, std::memory_order_release);
-    childNodesCount.store(0, std::memory_order_release);
-  }
+  LinkedTask();
+
   //shallow copy without {.next, .targetUrl, .pageContent}
   void shallowCopy(const LinkedTask& other);
 
@@ -87,9 +83,6 @@ public:
 
   //level of this node
   unsigned level, order;
-  LinkedTask* root;
-  LinkedTask* parent;
-
   //counds next/child nodes: load() is acquire
   std::atomic_int childNodesCount;
 
@@ -97,18 +90,13 @@ public:
    *  (LinkedTask*)child points to next level items(subtree).
    * load : memory_order_acquire
    * store: memory_order_release */
-  std::atomic_uintptr_t next, child;
+  std::atomic_uintptr_t next, child, root, parent;
 
   GrepVars grepVars;
 
   unsigned maxLinkCount;
   // you must have guaranteed that these are set & will live longer than any LinkedTask object
   std::atomic_uint* linksCounterPtr, *maxLinksCountPtr;
-
-  std::function<void(LinkedTask*, std::shared_ptr<WorkerCtx> w)> pageMatchFinishedCb;
-  /** Invoked when a new level of child nodes has spawned,
-*/
-  std::function<void(LinkedTask*,std::shared_ptr<WorkerCtx> w)> childLevelSpawned;
 
 };
 //---------------------------------------------------------------

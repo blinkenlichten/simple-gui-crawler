@@ -24,10 +24,17 @@ Widget::Widget(QWidget *parent) :
 
   connect(ui->buttonStart, &QPushButton::clicked,
           this, &Widget::onStart, Qt::DirectConnection);
-  crawler->onException =  [this] (const std::string& what)
+  crawler->setExceptionCB
+      (
+        [this] (const std::string& what)
+        {
+            bufferedErrorMsg = std::make_shared<QString>(QString::fromStdString(what));
+        }
+  );
+  crawler->setPageScannedCB([](std::shared_ptr<LinkedTask> rootNode, LinkedTask* node)
   {
-      bufferedErrorMsg = std::make_shared<QString>(QString::fromStdString(what));
-  };
+
+  });
 }
 
 Widget::~Widget()
