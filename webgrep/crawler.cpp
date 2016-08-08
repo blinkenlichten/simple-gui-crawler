@@ -116,6 +116,7 @@ bool Crawler::start(const std::string& url,
         root.reset(new LinkedTask,
                    [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
 
+        pv->currentLinksCount->store(0);
         root->linksCounterPtr = (pv->currentLinksCount);
         root->maxLinksCountPtr = (pv->maxLinksCount);
       }
@@ -209,7 +210,7 @@ void Crawler::setThreadsNumber(unsigned nthreads)
     }
   try {
     std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
-    pv->stop(false/*mutex lock*/);
+    pv->stop(false/*no mutex lock*/);
     if (nullptr != pv->workersPool)
       {
         pv->workersPool->close();

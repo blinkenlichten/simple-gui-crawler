@@ -49,6 +49,8 @@ struct WorkerCtx
   WorkerCtx() {
     hrefGrepExpr = boost::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"([^\"]*)\"",
                                 boost::regex::normal | boost::regbase::icase);
+    hrefGrepExpr2 = boost::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"/([_A-Za-z0-9]*)/\"",
+                                boost::regex::normal | boost::regbase::icase);
     urlGrepExpr = boost::regex(" (http:|https:)//[a-zA-Z0-9./?=_-]*");//boost::regex("(http|https)://[a-zA-Z0-9./?=_-]*");
     running = true;
   }
@@ -59,7 +61,7 @@ struct WorkerCtx
 
   WebGrep::Client httpClient;
   std::string hostPort;
-  boost::regex urlGrepExpr, hrefGrepExpr;
+  boost::regex urlGrepExpr, hrefGrepExpr, hrefGrepExpr2;
 
   std::function<void(LinkedTask*, WorkerCtxPtr, const std::string& )> onException;
 

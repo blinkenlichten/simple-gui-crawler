@@ -143,21 +143,21 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port)
       turl.assign(grepVars.matchURLVector[c].first,
                   grepVars.matchURLVector[c].second);
       auto httpPos = turl.find_first_of("http");
-      if (std::string::npos == httpPos)
+      if (std::string::npos != httpPos)
         {
-          //deal with local href links: href=resource.html or leave if href="http://.."
-          auto quoteLast = turl.find_last_of('\"');
-          auto quotePos = turl.find_first_of('\"');
-          //grab http:// or https://
-          auto nodeParent = ItemLoadAcquire(node->parent);
-          localLink = nodeParent->grepVars.targetUrl.substr(0, 3 + grepVars.targetUrl.find_first_of("://"));
-          // append site.com:443
-          localLink += host_and_port;
-          // append local resource URI
-          localLink += "/";
-          localLink += turl.substr(quotePos, quoteLast);
-          turl = localLink;
+          continue;
         }
+      //deal with local href links: href=/resource.html or leave if href="http://.."
+      //grab http:// or https://
+      auto nodeParent = ItemLoadAcquire(node->parent);
+      localLink = nodeParent->grepVars.targetUrl.substr(0, 3 + grepVars.targetUrl.find_first_of("://"));
+      // append site.com:443
+      localLink += host_and_port;
+      // append local resource URI
+      if ('/' != turl[0])
+        localLink += "/";
+      localLink += turl;
+      turl = localLink;
     }
   return spawnedCnt;
 }

@@ -8,7 +8,103 @@
 namespace WebGrep {
 
 //---------------------------------------------------------------
+bool CheckExtension(const char* buf, unsigned len)
+{
+  if (len < 4)
+    {//slashes mean directories:
+      return len > 1 && ('/' == buf[len - 1] || buf[0] == '/');
+    }
+  //not interesting files (media):
+  static const char* d_file_extensions[ ] = {
+      ".js",  ".jpg", "jpeg", ".mp4", "mpeg", ".avi",
+      ".mkv", "rtmp", ".mov", ".3gp", ".wav", ".mp3",
+      ".doc", ".odt", ".pdf", ".gif", ".ogv", ".ogg"
+    };
+  //interesting files:
+  static const char* d_extensions[ ]
+      = {"html", ".htm", ".asp", ".jsp", ".php", ".rb", ".prl", ".py"};
+  const char* last4 = buf + len - 4;
+
+  //since we have only 4 bytes there, lets compare them as uint32_t
+  {
+    uint32_t c = 0;
+    const uint32_t* ptr1 = (const uint32_t*)last4;
+
+    uint32_t sz = sizeof(d_file_extensions)/sizeof(const char*);
+    const uint32_t* ptr2 = nullptr;
+    for (ptr2 = (unsigned*)d_file_extensions[c];
+         c < sz && *ptr1 != *ptr2;
+         ++c, ptr2 = (const uint32_t*)d_file_extensions[c])
+      {/*break on match*/  }
+    if (c < sz)
+      //got match with a media file, we're not interested
+      return false;
+
+    sz = sizeof(d_extensions)/sizeof(const char*);
+    c = 0;
+    for (ptr2 = (unsigned*)d_extensions[c];
+         c < sz && *ptr1 != *ptr2;
+         ++c, ptr2 = (const uint32_t*)d_extensions[c])
+      {/*break on match*/  }
+
+    //got match on interesting file extension
+    if (c < sz)
+      return true;
+  }
+
+  //if it contains at least 1 '.' -- then it's not our case
+  bool canHazDot = false;
+  for(uint32_t z = 0; z < 4; ++z)
+    {
+      canHazDot = canHazDot || ('.' == last4[z]);
+    }
+  //otherwise
+  return !canHazDot && ('/' == buf[0] || '/' == buf[len - 1]);
+}
 //---------------------------------------------------------------
+void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
+                       const boost::smatch& matchURL,
+                       GrepVars& g)
+{
+  std::string temp;
+  temp.reserve(256);
+
+  for(size_t matchIdx = 0; matchIdx < matchURL.size(); ++matchIdx)
+    {
+      auto subitem = &(matchURL[matchIdx]);
+      auto diff = subitem->second - subitem->first;
+      temp.resize(diff);
+      auto shift = matchURL.position(matchIdx);
+      auto matchPageBegin = g.pageContent.begin() + shift;
+      temp.assign(matchPageBegin, matchPageBegin + shift);
+
+      const char href[] = "href";
+      size_t hrefPos = temp.find(href,0,4);
+
+      if (hrefPos < temp.size())
+        {//case href
+          auto quotePos = temp.find_first_of('=',hrefPos);
+          quotePos = temp.find_first_of('"', quotePos);
+          quotePos++;
+          //make new iterators that point to g.pageContent
+          auto begin = matchPageBegin + quotePos;
+          auto end = begin;
+          auto quote2 = temp.find_first_of('"', quotePos);
+          if (quote2 != std::string::npos)
+            end += (size_t)(quote2 - quotePos);
+          temp.assign(begin, end);
+          out[temp] = GrepVars::CIteratorPair(begin, end);
+        }
+      else
+        {//case just http://
+          auto page_pos = g.pageContent.begin() + matchURL.position(matchIdx);
+          out[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
+        }
+    }
+
+}
+//---------------------------------------------------------------
+
 bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
 {
   GrepVars& g(task->grepVars);
@@ -84,46 +180,14 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
     boost::regex_search(g.pageContent, matchedText, g.grepExpr);
 
     //grep the http:// URLs and spawn new nodes:
-    std::string temp;
-    temp.reserve(256);
-
     boost::smatch matchURL;
 
     //match href="URL"
     boost::regex_search(g.pageContent, matchURL, w->hrefGrepExpr);
-    for(size_t matchIdx = 0; matchIdx < matchURL.size(); ++matchIdx)
-      {
-        auto subitem = &(matchURL[matchIdx]);
-        auto diff = subitem->second - subitem->first;
-        temp.resize(diff);
-        auto shift = matchURL.position(matchIdx);
-        auto matchPageBegin = g.pageContent.begin() + shift;
-        temp.assign(matchPageBegin, matchPageBegin + shift);
+    PostProcHrefLinks(matches, matchURL, g);
 
-        const char href[] = "href";
-        size_t hrefPos = temp.find(href,0,4);
-
-        if (hrefPos < temp.size())
-          {//case href
-            auto quotePos = temp.find_first_of('=',hrefPos);
-            quotePos = temp.find_first_of('"', quotePos);
-            quotePos++;
-            //make new iterators that point to g.pageContent
-            auto begin = matchPageBegin + quotePos;
-            auto end = begin;
-            auto quote2 = temp.find_first_of('"', quotePos);
-            if (quote2 != std::string::npos)
-              end += (size_t)(quote2 - quotePos);
-            temp.assign(begin, end);
-            matches[temp] = GrepVars::CIteratorPair(begin, end);
-          }
-        else
-          {//case just http://
-            auto page_pos = g.pageContent.begin() + matchURL.position(matchIdx);
-            matches[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
-          }
-      }
-
+    boost::regex_search(g.pageContent, matchURL, w->hrefGrepExpr2);
+    PostProcHrefLinks(matches, matchURL, g);
     //---------------------------------------------------------------
     //put all together:
     //---------------------------------------------------------------
@@ -137,26 +201,30 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
           auto begin = g.pageContent.begin() + matchedText.position(matchIdx);
           g.matchTextVector.push_back(GrepVars::CIteratorPair(begin, begin + diff));
         }
+      auto rootNode = ItemLoadAcquire(task->root);
+      if (nullptr == rootNode)
+        rootNode = task;
 
-
-    //push matched URLS
-    for(auto iter = matches.begin(); iter != matches.end(); ++iter)
-      {
-        const std::string& key((*iter).first);
-        //filter which content we allow to be scanned:
-        if (key.size() > 1
-            && key != g.targetUrl //avoid scanning self again
-            &&
-            ( (key[key.size() - 1]) == '/'
-              || std::string::npos != key.find_last_of(".htm")
-              || std::string::npos != key.find_last_of(".asp")
-              || std::string::npos != key.find_last_of(".php")
-              ) )
-          {
-            g.matchURLVector.push_back((*iter).second);
-          }
-      }
-    //end grep http
+      const std::string& rootTarget (rootNode->grepVars.targetUrl);
+      static boost::regex matchRoot("(:[0-9]*)/");
+      //push matched URLS
+      for(auto iter = matches.begin(); iter != matches.end(); ++iter)
+        {
+          const std::string& key((*iter).first);
+          if (std::string::npos != key.find_first_of(rootTarget)
+              && key.size() >= rootTarget.size()
+              && boost::regex_match(key, matchRoot))
+            {
+              continue;//skip link to main page
+            }
+          //filter which content we allow to be scanned:
+          if (WebGrep::CheckExtension(key.data(), key.size())
+              && key != g.targetUrl) //avoid scanning self again
+            {
+              g.matchURLVector.push_back((*iter).second);
+            }
+        }
+      //end grep http
 
     }//--------- export section END ----------
 

@@ -13,7 +13,7 @@ namespace WebGrep {
 
 class WorkerCtx;
 //---------------------------------------------------------------
-
+/** Contains match results -- an iterators pointing to .pageContent.*/
 struct GrepVars
 {
   GrepVars() : responseCode(0), pageIsReady(false), pageIsParsed(false)
