@@ -40,8 +40,13 @@ int AcceptAllSSL(void*, int, const ne_ssl_certificate*)
 std::string Client::connect(const std::string& httpURL)
 {
   std::string scheme = httpURL.substr(0, httpURL.find_first_of("://"));
-  if (scheme.empty())
-    return scheme;
+  if (scheme.size() < 5)
+    return std::string();
+
+  for(unsigned c = 0; c < 5; ++c)
+    scheme[c] = std::tolower(scheme[c]);
+
+
   ctx = std::make_shared<ClientCtx>();
   ctx->host_and_port = ExtractHostPortHttp(httpURL);
   int port = (scheme == "http")? 80 : 443;
@@ -64,7 +69,8 @@ std::string Client::connect(const std::string& httpURL)
       ctx->host_and_port.append(temp.data());
     }
   ctx->sess = ne;
-  ne_set_useragent(ctx->sess, "libneon-1");
+  ne_set_useragent(ctx->sess, "libneon");
+  ne_ssl_trust_default_ca(ne);
   ne_ssl_set_verify(ne, &AcceptAllSSL, nullptr);
   return ctx->host_and_port;
 }

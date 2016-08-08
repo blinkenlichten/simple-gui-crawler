@@ -27,11 +27,26 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
 
   g.responseCode = ne_get_status(rq.req.get())->code;
 
-  if (200 != g.responseCode)
-    return false;
+  switch (g.responseCode)
+    {
+    //redirecting:
+    case 301:
+
+    case 302:
+      {
+        const char* location = ne_get_response_header(rq.req.get(),"Location");
+        if (nullptr == location)//failed to get Location header
+          { return false; }
+        url = location;
+        return FuncDownloadOne(task, w);
+      };
+      break;
+    case 200: break;
+
+    default: {return false;};
+    };
 
   g.pageContent = rq.ctx->response;
-//  std::cerr << g.pageContent << std::endl;
   g.pageIsReady = true;
   return true;
 }
@@ -39,6 +54,8 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
 bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
 {
   GrepVars& g(task->grepVars);
+  g.pageIsParsed = false;
+
   if (!g.pageIsReady)
     {
       FuncDownloadOne(task, w);

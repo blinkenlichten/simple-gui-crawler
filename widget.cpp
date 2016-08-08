@@ -7,15 +7,14 @@
 #include "webgrep/linked_task.h"
 #include "link_status_widget.h"
 
-//---------------------------------------------------------------
-//static std::vector<QString> guiList1Vector, guiList2Vector;
-//---------------------------------------------------------------
-
+//-----------------------------------------------------------------------------
 Widget::Widget(QWidget *parent) :
   QWidget(parent),
   ui(new Ui::Widget)
 {
   ui->setupUi(this);
+  setLayout(ui->topLayout);
+
   ui->groupBoxText->setLayout(ui->horizontalLayoutText);
   QTabWidget* tabw = ui->tabWidget;
   QWidget* textWidget = tabw->widget((int)WIDGET_TAB_IDX::FOUND_TEXT);
@@ -27,9 +26,6 @@ Widget::Widget(QWidget *parent) :
   QWidget* graphWidget = tabw->widget((int)WIDGET_TAB_IDX::GRAPH_RENDER);
   graphWidget->setLayout(ui->graphHorizontalLayout);
   ui->groupBoxText->setMaximumHeight(60);
-
-//  QWidget* webLayer = new QWidget(pageWidget);
-//  ui->pageHorizontalLayout->addWidget(webLayer);
 
   webPage = new QTextEdit(pageWidget);
   ui->pageHorizontalLayout->addWidget(webPage);
@@ -44,7 +40,7 @@ Widget::Widget(QWidget *parent) :
   connect(ui->buttonStart, &QPushButton::clicked,
           this, &Widget::onStart, Qt::DirectConnection);
 
-  connect(ui->listWidget_2, &QListWidget::itemActivated,
+  connect(ui->listWidgetReady, &QListWidget::itemActivated,
           this, &Widget::onList2Clicked, Qt::DirectConnection);
 
   crawler->setExceptionCB
@@ -59,13 +55,13 @@ Widget::Widget(QWidget *parent) :
   } );
 
 }
-
+//-----------------------------------------------------------------------------
 Widget::~Widget()
 {
   delete ui;
   delete webPage;
 }
-
+//-----------------------------------------------------------------------------
 void Widget::onList2Clicked(QListWidgetItem* item)
 {
   LinkStatusWidget* st = (LinkStatusWidget*)item;
@@ -77,7 +73,7 @@ void Widget::onList2Clicked(QListWidgetItem* item)
       render->update();
     }
 }
-
+//-----------------------------------------------------------------------------
 void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGrep::LinkedTask* node)
 {
   /** Spawns items that display status of page scann.**/
@@ -90,7 +86,7 @@ void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGre
                 guiTempString.sprintf("url: %s (GET code: %d) (Status: %s )",
                                       g.targetUrl.data(), g.responseCode,
                                       g.pageIsReady? "downloaded" : "pending in the queue");
-                listPtr = ui->listWidget;
+                listPtr = ui->listWidgetPending;
               }
             else
               {
@@ -98,7 +94,7 @@ void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGre
                                       g.targetUrl.data(), g.responseCode,
                                       g.matchTextVector.size(), g.matchURLVector.size());
 
-                listPtr = ui->listWidget_2;
+                listPtr = ui->listWidgetReady;
               }
             auto item = new LinkStatusWidget(listPtr);
             item->rootTask = this->mainNode;
@@ -110,20 +106,20 @@ void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGre
   static boost::detail::spinlock guiLock;
   std::lock_guard<boost::detail::spinlock> lk(guiLock); (void)lk;
 
-  ui->listWidget->clear();
+  ui->listWidgetPending->clear();
 
   if (this->mainNode != rootNode)
     {//case the tree is new,
-      ui->listWidget_2->clear();
+      ui->listWidgetReady->clear();
       WebGrep::TraverseFunctor(rootNode.get(), nullptr, spawnFunctor);
       this->mainNode = rootNode;
       return;
     }
   //case working with previous items tree
-  ui->listWidget->clear();
+  ui->listWidgetPending->clear();
   WebGrep::TraverseFunctor(node, nullptr, spawnFunctor);
 }
-
+//-----------------------------------------------------------------------------
 void Widget::onStart()
 {
   bool ok = false;
@@ -151,7 +147,7 @@ void Widget::onStart()
                  ui->textEdit->toPlainText().toStdString(),
                  nlinks, ui->dial->value());
 }
-
+//-----------------------------------------------------------------------------
 void Widget::paintEvent(QPaintEvent *event)
 {
   std::shared_ptr<QString> msg = bufferedErrorMsg;
@@ -162,3 +158,4 @@ void Widget::paintEvent(QPaintEvent *event)
     }
   QWidget::paintEvent(event);
 }
+//-----------------------------------------------------------------------------

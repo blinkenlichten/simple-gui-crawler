@@ -16,8 +16,37 @@ extern "C" {
 /** Modified version from https://github.com/eidheim/Simple-Web-Server */
 namespace WebGrep {
 
+class ClientCtx;
 std::string ExtractHostPortHttp(const std::string& targetUrl);
 
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+/** Contains connection context and it's dependant request tasks,
+ * the destructor will clean up it all.
+*/
+class Client
+{
+public:
+  struct IssuedRequest
+  {//ref.count holding structure
+   std::shared_ptr<ne_request> req;
+   std::shared_ptr<ClientCtx> ctx;
+  };
+
+  Client();
+  virtual ~Client();
+
+  /** Connect to a host, use issueRequest() when connected
+   * @return extracted host and port string or empty on fail.*/
+  std::string connect(const std::string& httpURL);
+
+  IssuedRequest issueRequest(const char* method, const char* path);
+
+protected:
+  std::shared_ptr<ClientCtx> ctx;//not null when connected
+};
+//-----------------------------------------------------------------------------
+/** libneon ne_session holder*/
 class ClientCtx : public boost::noncopyable
 {
 public:
@@ -33,26 +62,7 @@ public:
   std::string response;
   std::string host_and_port;
 };
-
-class Client
-{
-public:
-  Client();
-  virtual ~Client();
-
-  /** @return extracted host and port string.*/
-  std::string connect(const std::string& httpURL);
-
-  struct IssuedRequest
-  {
-   std::shared_ptr<ne_request> req;
-   std::shared_ptr<ClientCtx> ctx;
-  };
-  IssuedRequest issueRequest(const char* method, const char* path);
-
-protected:
-  std::shared_ptr<ClientCtx> ctx;//not null when connected
-};
+//-----------------------------------------------------------------------------
 
 }//WebGrep
 

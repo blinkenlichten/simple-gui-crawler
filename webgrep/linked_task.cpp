@@ -101,7 +101,7 @@ size_t LinkedTask::spawnChildNodes(size_t nodesCount)
     }
 
     //spawn items on same level (access by .next)
-    do
+    for(; spawnCnt < nodesCount; ++spawnCnt)
       {
         item->next.store((std::uintptr_t)(new LinkedTask), std::memory_order_acquire);
         item = (LinkedTask*)item->next.load(std::memory_order_relaxed);
@@ -112,7 +112,7 @@ size_t LinkedTask::spawnChildNodes(size_t nodesCount)
           item->order = this->childNodesCount.load(std::memory_order_acquire);
           this->childNodesCount.fetch_add(1);
         }
-      } while(++spawnCnt < nodesCount);
+      };
   } catch(std::exception& ex)
   {
     std::cerr << __FUNCTION__ << std::endl;
@@ -130,6 +130,9 @@ size_t LinkedTask::spawnChildNodes(size_t nodesCount)
 
 size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port)
 {
+  if (!grepVars.pageIsParsed)
+    return 0;
+
   size_t spawnedCnt = spawnChildNodes(grepVars.matchURLVector.size());
   LinkedTask* node = ItemLoadAcquire(child);
   std::string localLink;

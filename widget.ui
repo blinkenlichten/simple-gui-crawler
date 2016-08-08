@@ -28,7 +28,7 @@
      <height>564</height>
     </rect>
    </property>
-   <layout class="QVBoxLayout" name="verticalLayout_3">
+   <layout class="QVBoxLayout" name="topLayout">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout_3"/>
     </item>
@@ -41,10 +41,10 @@
        </size>
       </property>
       <property name="title">
-       <string>GroupBox</string>
+       <string>Enter address and search phrase here:</string>
       </property>
       <property name="checkable">
-       <bool>true</bool>
+       <bool>false</bool>
       </property>
       <widget class="QWidget" name="horizontalLayoutWidget">
        <property name="geometry">
@@ -74,7 +74,7 @@
            </size>
           </property>
           <property name="text">
-           <string>Http URL:</string>
+           <string>Http(s) URL:</string>
           </property>
          </widget>
         </item>
@@ -98,18 +98,21 @@
          <widget class="QLabel" name="label_2">
           <property name="minimumSize">
            <size>
-            <width>0</width>
+            <width>180</width>
             <height>20</height>
            </size>
           </property>
           <property name="maximumSize">
            <size>
-            <width>120</width>
-            <height>30</height>
+            <width>200</width>
+            <height>50</height>
            </size>
           </property>
           <property name="text">
-           <string>Search phrase:</string>
+           <string>Search phrase(word or PERL regexp.):</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
           </property>
          </widget>
         </item>
@@ -137,6 +140,18 @@
      <layout class="QHBoxLayout" name="horizontalLayout_4">
       <item>
        <layout class="QVBoxLayout" name="verticalLayout">
+        <property name="leftMargin">
+         <number>10</number>
+        </property>
+        <property name="topMargin">
+         <number>4</number>
+        </property>
+        <property name="rightMargin">
+         <number>4</number>
+        </property>
+        <property name="bottomMargin">
+         <number>4</number>
+        </property>
         <item>
          <widget class="QPushButton" name="buttonStart">
           <property name="maximumSize">
@@ -282,7 +297,7 @@
          </size>
         </property>
         <property name="currentIndex">
-         <number>1</number>
+         <number>0</number>
         </property>
         <widget class="QWidget" name="foundTextTab">
          <attribute name="title">
@@ -306,17 +321,17 @@
             </widget>
            </item>
            <item>
-            <widget class="QListWidget" name="listWidget"/>
+            <widget class="QListWidget" name="listWidgetPending"/>
            </item>
            <item>
             <widget class="QLabel" name="label_3">
              <property name="text">
-              <string>Scanned pages:</string>
+              <string>Scanned pages(double click to display):</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QListWidget" name="listWidget_2"/>
+            <widget class="QListWidget" name="listWidgetReady"/>
            </item>
           </layout>
          </widget>

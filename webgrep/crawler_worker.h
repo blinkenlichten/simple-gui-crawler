@@ -72,6 +72,7 @@ struct WorkerCtx
   //when max. links count reached.
   std::function<void(LinkedTask*, WorkerCtxPtr)> onMaximumLinksCount;
 
+  /** Invoked on each page parsed.*/
   std::function<void(LinkedTask*, std::shared_ptr<WorkerCtx> w)> pageMatchFinishedCb;
 
   /** Invoked when a new level of child nodes has spawned, */

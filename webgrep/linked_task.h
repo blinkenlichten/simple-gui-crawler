@@ -101,7 +101,6 @@ public:
 
   GrepVars grepVars;
 
-  unsigned maxLinkCount;
   // you must have guaranteed that these are set & will live longer than any LinkedTask object
   std::shared_ptr<std::atomic_uint> linksCounterPtr, maxLinksCountPtr;
 
