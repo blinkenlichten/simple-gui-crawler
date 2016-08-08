@@ -18,8 +18,10 @@ public:
   CrawlerPV()
   {
     firstPageTask = nullptr;
-    maxLinksCount.store(4096);
-    currentLinksCount.store(0);
+    maxLinksCount = std::make_shared<std::atomic_uint>();
+    currentLinksCount = std::make_shared<std::atomic_uint>();
+    maxLinksCount->store(4096);
+    currentLinksCount->store(0);
 
     onMainSubtaskCompleted = [this](LinkedTask* task, WorkerCtxPtr)
     {
@@ -47,7 +49,7 @@ public:
         workersPool->join();
       }
     firstPageTask.reset();
-    currentLinksCount.store(0);
+    currentLinksCount->store(0);
   }
 
   void stop(bool withMLock)
@@ -70,7 +72,7 @@ public:
   std::mutex wlistMutex;
   std::unique_ptr<boost::executors::basic_thread_pool> workersPool;
   std::vector<WorkerCtxPtr> workContexts;
-  std::atomic_uint maxLinksCount, currentLinksCount;
+  std::shared_ptr<std::atomic_uint> maxLinksCount, currentLinksCount;
 
   std::function<void(LinkedTask*, WorkerCtxPtr)> onMainSubtaskCompleted;
 };
@@ -114,8 +116,8 @@ bool Crawler::start(const std::string& url,
         root.reset(new LinkedTask,
                    [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
 
-        root->linksCounterPtr = &(pv->currentLinksCount);
-        root->maxLinksCountPtr = &(pv->maxLinksCount);
+        root->linksCounterPtr = (pv->currentLinksCount);
+        root->maxLinksCountPtr = (pv->maxLinksCount);
       }
 
     GrepVars* g = &(root->grepVars);
@@ -170,9 +172,6 @@ bool Crawler::start(const std::string& url,
           nullptr != node;
           ++item %= pv->workContexts.size(), node = WebGrep::ItemLoadAcquire(node->next) )
         {
-          std::array<char, 64> temp; temp.fill(0);
-          ::snprintf(temp.data(),temp.size(),"Task %p Worker %lu", node, item);
-          node->grepVars.pageLock.logName = temp.data();
           auto ctx = pv->workContexts[item];
           //submit recursive grep for each 1-st level subtask:
           pv->workersPool->submit([node, ctx]
@@ -198,7 +197,7 @@ void Crawler::stop()
 void Crawler::setMaxLinks(unsigned maxScanLinks)
 {
   //sync with load(acquire)
-  pv->maxLinksCount.store(maxScanLinks);
+  pv->maxLinksCount->store(maxScanLinks);
 }
 //---------------------------------------------------------------
 void Crawler::setThreadsNumber(unsigned nthreads)

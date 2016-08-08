@@ -10,37 +10,9 @@
 
 namespace WebGrep {
 
+
 class WorkerCtx;
 //---------------------------------------------------------------
-
-class PageLock_t
-{
-public:
-  std::string logName;
-
-  bool try_lock() noexcept
-  {
-    return mu.try_lock();
-  }
-
-  void lock() noexcept
-  {
-    if(!logName.empty())
-      std::cerr << " >> try lock " << logName << std::endl;
-    mu.lock();
-
-    if(!logName.empty())
-      std::cerr << " >> locked OK" << logName << std::endl;
-  }
-  void unlock() noexcept
-  {
-    if(!logName.empty())
-      std::cerr << " << unlock " << logName << std::endl;
-    mu.unlock();
-  }
-  std::mutex mu;
-};
-
 
 struct GrepVars
 {
@@ -51,7 +23,6 @@ struct GrepVars
   boost::regex grepExpr;  //< regexp to be matched
   int responseCode;       //< last HTTP GET response code
 
-  PageLock_t pageLock;    //< lock this to safely read this->pageContent.
   std::string pageContent;//< html content
 
   //contains matched URLs in .pageContent
@@ -87,9 +58,14 @@ void DeleteList(LinkedTask* head);
 
 /** LinkedTask : a tree list that is using atomic pointers
  *  for child nodes (to be able to read without locking).
- *  Once the node is constructed -- it is okay to read tree pointers concurrently,
+ *  Once the node is constructed -- it is okay to read tree pointers concurrently and modify them,
  *  the variable (GrapVars grepVars) must be carefully accessed on callbacks
- *  when (volatile bool)grepVars.pageIsParse has been set, for example.
+ *  when in event-driven flow,
+ *  (volatile bool)grepVars.pageIsReady indicates that grepVars.pageContent is constructed;
+ *  (volatile bool)grepVars.pageIsParsed indicates that grepVars.pageContent is already parsed
+ *  and grepVars.matchURLVector is filled;
+ *  Instead of prasing the task again on current item,
+ *  better construct new node and move the data there safely.
  */
 class LinkedTask : public boost::noncopyable
 {
@@ -115,7 +91,7 @@ public:
   //level of this node
   unsigned level, order;
   //counds next/child nodes: load() is acquire
-  std::atomic_int childNodesCount;
+  std::atomic_uint childNodesCount;
 
   /** (LinkedTask*)next points to same level item,
    *  (LinkedTask*)child points to next level items(subtree).
@@ -127,7 +103,7 @@ public:
 
   unsigned maxLinkCount;
   // you must have guaranteed that these are set & will live longer than any LinkedTask object
-  std::atomic_uint* linksCounterPtr, *maxLinksCountPtr;
+  std::shared_ptr<std::atomic_uint> linksCounterPtr, maxLinksCountPtr;
 
 };
 //---------------------------------------------------------------

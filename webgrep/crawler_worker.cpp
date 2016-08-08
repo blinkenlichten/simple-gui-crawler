@@ -30,7 +30,6 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
   if (200 != g.responseCode)
     return false;
 
-  std::lock_guard<PageLock_t> lk(g.pageLock); (void)lk;
   g.pageContent = rq.ctx->response;
 //  std::cerr << g.pageContent << std::endl;
   g.pageIsReady = true;
@@ -112,8 +111,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
     //put all together:
     //---------------------------------------------------------------
 
-    {//-------- criticals section BEGIN ----------
-      std::lock_guard<PageLock_t> lk(g.pageLock); (void)lk;
+    {//-------- export section BEGIN ----------
       //push text match results into the vector
       for(size_t matchIdx = 0; matchIdx < matchedText.size(); ++matchIdx)
         {
@@ -143,7 +141,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
       }
     //end grep http
 
-    }//--------- critical section END ----------
+    }//--------- export section END ----------
 
   }
   catch(const std::exception& ex)
@@ -206,10 +204,6 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
   auto child = ItemLoadAcquire(task->child);
   for(; nullptr != child; child = ItemLoadAcquire(child->next))
     {
-      std::array<char, 64> temp; temp.fill(0);
-      ::snprintf(temp.data(),temp.size(),"SubTask %p Worker %p", child, w);
-      child->grepVars.pageLock.logName = temp.data();
-
       w->sheduleTask([child, w](){FuncDownloadGrepRecursive(child, w);});
     }
    return true;

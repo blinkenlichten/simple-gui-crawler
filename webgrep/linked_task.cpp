@@ -17,6 +17,7 @@ void TraverseFunc(LinkedTask* head, void* additional,
   auto child = ItemLoadAcquire(head->child);
   if(nullptr != child)
     func(child, additional);
+  func(head, additional);
 }
 
 // Recursively traverse the list and call functor on each item
@@ -33,26 +34,27 @@ void TraverseFunctor(LinkedTask* head, void* additional,
   auto child = ItemLoadAcquire(head->child);
   if(nullptr != child)
     func(child, additional);
+
+  func(head, additional);
 }
 
 static void DeleteCall(LinkedTask* item, void* data)
 {
-  (void)data;
+  if ((void*)item == data)
+    return;
   delete item;
 }
 
 // Free memory recursively.
 void DeleteList(LinkedTask* head)
 {
-  TraverseFunc(head, nullptr, &DeleteCall);
+  TraverseFunc(head, head, &DeleteCall);
   delete head;
 }
 //---------------------------------------------------------------
 LinkedTask::LinkedTask() : level(0)
 {
   order = 0;
-  maxLinksCountPtr = nullptr;
-  linksCounterPtr = nullptr;
   next.store(0);
   child.store(0);
   root.store(0);

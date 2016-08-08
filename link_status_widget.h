@@ -1,29 +1,31 @@
 #ifndef LINKSTATUSWIDGET_H
 #define LINKSTATUSWIDGET_H
 
-#include <QLabel>
+#include <QListWidgetItem>
+#include <QListWidget>
 #include <mutex>
+#include <memory>
+#include "boost/smart_ptr/detail/spinlock.hpp"
 
-class LinkStatusWidget : public QLabel
+namespace WebGrep {
+  class LinkedTask;
+}
+
+class LinkStatusWidget : public QListWidgetItem
 {
-  Q_OBJECT
 public:
-  explicit LinkStatusWidget(QWidget *parent = 0);
+  explicit LinkStatusWidget(QListWidget *parent = 0);
   virtual ~LinkStatusWidget();
 
-  //thread-safe, makes spinlock
-  void modify(const std::string& url, bool scanned, int status_code,
-              const char* errorMsg = nullptr);
+  std::shared_ptr<WebGrep::LinkedTask> rootTask;
+  WebGrep::LinkedTask* node;
 
-  void paintEvent(QPaintEvent *event);
 
-  void* externalData;
 signals:
 
 public slots:
 
 private:
-  void* lockItem;
 };
 
 #endif // LINKSTATUSWIDGET_H
