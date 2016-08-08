@@ -10,11 +10,13 @@ void TraverseFunc(LinkedTask* head, void* additional,
   if (nullptr == head || nullptr == func)
     return;
   for(LinkedTask* next = ItemLoadAcquire(head->next);
-      nullptr != next; next = ItemLoadAcquire(head->next))
+      nullptr != next; next = ItemLoadAcquire(next->next))
     {
       func(next, additional);
     }
-  func(ItemLoadAcquire(head->child), additional);
+  auto child = ItemLoadAcquire(head->child);
+  if(nullptr != child)
+    func(child, additional);
 }
 
 // Recursively traverse the list and call functor on each item
@@ -24,11 +26,13 @@ void TraverseFunctor(LinkedTask* head, void* additional,
   if (nullptr == head || nullptr == func)
     return;
   for(LinkedTask* next = ItemLoadAcquire(head->next);
-      nullptr != next; next = ItemLoadAcquire(head->next))
+      nullptr != next; next = ItemLoadAcquire(next->next))
     {
       func(next, additional);
     }
-  func(ItemLoadAcquire(head->child), additional);
+  auto child = ItemLoadAcquire(head->child);
+  if(nullptr != child)
+    func(child, additional);
 }
 
 static void DeleteCall(LinkedTask* item, void* data)

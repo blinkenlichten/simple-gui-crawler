@@ -24,7 +24,7 @@ public slots:
   void onStart();
   void paintEvent(QPaintEvent *event);
 
-private:
+public:
   Ui::Widget *ui;
   std::shared_ptr<WebGrep::Crawler> crawler;
   std::shared_ptr<QString> bufferedErrorMsg;

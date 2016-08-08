@@ -7,6 +7,8 @@
 #include <thread>
 #include "boost/lockfree/queue.hpp"
 #include "boost/thread/thread_pool.hpp"
+#include <stdio.h>
+#include <cstdlib>
 
 namespace WebGrep {
 
@@ -122,11 +124,17 @@ bool Crawler::start(const std::string& url,
     auto pv_copy = pv;
     for(WorkerCtxPtr& ctx : pv->workContexts)
       {//enable workers to spawn subtasks e.g. "start"
-        ctx->childLevelSpawned   = [pv_copy](LinkedTask* node, std::shared_ptr<WorkerCtx>)
+        ctx->pageMatchFinishedCb  = [pv_copy](LinkedTask* node, std::shared_ptr<WorkerCtx>)
         {
           if (pv_copy)
             pv_copy->onPageScanned(pv_copy->firstPageTask, node);
         };
+        ctx->childLevelSpawned =  [pv_copy](LinkedTask* node, std::shared_ptr<WorkerCtx>)
+        {
+          if (pv_copy)
+            pv_copy->onPageScanned(pv_copy->firstPageTask, node);
+        };
+
         ctx->running = true;
       }
   } catch(std::exception& e)
@@ -162,6 +170,9 @@ bool Crawler::start(const std::string& url,
           nullptr != node;
           ++item %= pv->workContexts.size(), node = WebGrep::ItemLoadAcquire(node->next) )
         {
+          std::array<char, 64> temp; temp.fill(0);
+          ::snprintf(temp.data(),temp.size(),"Task %p Worker %lu", node, item);
+          node->grepVars.pageLock.logName = temp.data();
           auto ctx = pv->workContexts[item];
           //submit recursive grep for each 1-st level subtask:
           pv->workersPool->submit([node, ctx]

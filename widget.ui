@@ -282,7 +282,7 @@
          </size>
         </property>
         <property name="currentIndex">
-         <number>0</number>
+         <number>1</number>
         </property>
         <widget class="QWidget" name="foundTextTab">
          <attribute name="title">
@@ -320,8 +320,6 @@
            </item>
           </layout>
          </widget>
-         <zorder>spacer</zorder>
-         <zorder>verticalLayoutWidget</zorder>
         </widget>
         <widget class="QWidget" name="pageRenderTab">
          <attribute name="title">

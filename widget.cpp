@@ -1,7 +1,35 @@
 #include "widget.h"
 #include "ui_widget.h"
 
+#include <mutex>
 #include "webgrep/linked_task.h"
+
+//---------------------------------------------------------------
+static boost::detail::spinlock guiSpinLock;
+static QString guiTempString;
+//static std::vector<QString> guiList1Vector, guiList2Vector;
+//---------------------------------------------------------------
+void GuiTraverseFunctor(WebGrep::LinkedTask* head, void* data)
+{
+  Widget* w = (Widget*)data;
+  const WebGrep::GrepVars& g(head->grepVars);
+  if (!g.pageIsParsed)
+    {
+      guiTempString.sprintf("url: %s (GET code: %d) (Status: %s )",
+                            g.targetUrl.data(), g.responseCode,
+                            g.pageIsReady? "downloaded" : "pending in the queue");
+      w->ui->listWidget->addItem(guiTempString);
+    }
+  else
+    {
+      guiTempString.sprintf("url: %s (GET code: %d) (Status:parsed) (Text Matches: %lu) (URL matches: %lu)",
+                            g.targetUrl.data(), g.responseCode,
+                            g.matchTextVector.size(), g.matchURLVector.size());
+
+      w->ui->listWidget_2->addItem(guiTempString);
+    }
+}
+
 
 Widget::Widget(QWidget *parent) :
   QWidget(parent),
@@ -20,6 +48,10 @@ Widget::Widget(QWidget *parent) :
   graphWidget->setLayout(ui->graphHorizontalLayout);
   ui->groupBoxText->setMaximumHeight(60);
 
+//  guiList1Vector.reserve(1024);
+//  guiList2Vector.reserve(1024);
+  guiTempString.reserve(256);
+
   crawler = std::make_shared<WebGrep::Crawler>();
 
   connect(ui->buttonStart, &QPushButton::clicked,
@@ -31,9 +63,35 @@ Widget::Widget(QWidget *parent) :
             bufferedErrorMsg = std::make_shared<QString>(QString::fromStdString(what));
         }
   );
-  crawler->setPageScannedCB([](std::shared_ptr<LinkedTask> rootNode, LinkedTask* node)
+  crawler->setPageScannedCB([this](std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGrep::LinkedTask* node)
   {
+    std::lock_guard<boost::detail::spinlock> lkgui(guiSpinLock); (void)lkgui;
+//    ui->listWidget->clear();
+//    ui->listWidget_2->clear();
 
+    std::lock_guard<WebGrep::PageLock_t> lk(node->grepVars.pageLock);
+    WebGrep::TraverseFunc(node, (void*)this, GuiTraverseFunctor);
+//    WebGrep::TraverseFunctor(rootNode.get(), nullptr,
+//                             [this](WebGrep::LinkedTask* head, void*)
+//    {
+//      const WebGrep::GrepVars& g(head->grepVars);
+//      if (!g.pageIsParsed)
+//        {
+//          guiTempString.sprintf("url: %s (GET code: %d) (Status: %s )",
+//                                g.targetUrl.data(), g.responseCode,
+//                                g.pageIsReady? "downloaded" : "pending in the queue");
+//          ui->listWidget->addItem(guiTempString);
+//        }
+//      else
+//        {
+//          guiTempString.sprintf("url: %s (GET code: %d) (Status:parsed) (Text Matches: %lu) (URL matches: %lu)",
+//                                g.targetUrl.data(), g.responseCode,
+//                                g.matchTextVector.size(), g.matchURLVector.size());
+
+//          ui->listWidget_2->addItem(guiTempString);
+//        }
+//    }
+//    );
   });
 }
 
@@ -78,5 +136,6 @@ void Widget::paintEvent(QPaintEvent *event)
       ui->textEdit->setText(QString("Error occured:") + *msg);
       bufferedErrorMsg.reset();
     }
+  std::lock_guard<boost::detail::spinlock> lk(guiSpinLock); (void)lk;
   QWidget::paintEvent(event);
 }

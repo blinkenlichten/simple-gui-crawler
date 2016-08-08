@@ -5,10 +5,42 @@
 #include "boost/noncopyable.hpp"
 #include <atomic>
 
+#include <mutex>
+#include <iostream>
+
 namespace WebGrep {
 
 class WorkerCtx;
 //---------------------------------------------------------------
+
+class PageLock_t
+{
+public:
+  std::string logName;
+
+  bool try_lock() noexcept
+  {
+    return mu.try_lock();
+  }
+
+  void lock() noexcept
+  {
+    if(!logName.empty())
+      std::cerr << " >> try lock " << logName << std::endl;
+    mu.lock();
+
+    if(!logName.empty())
+      std::cerr << " >> locked OK" << logName << std::endl;
+  }
+  void unlock() noexcept
+  {
+    if(!logName.empty())
+      std::cerr << " << unlock " << logName << std::endl;
+    mu.unlock();
+  }
+  std::mutex mu;
+};
+
 
 struct GrepVars
 {
@@ -19,7 +51,6 @@ struct GrepVars
   boost::regex grepExpr;  //< regexp to be matched
   int responseCode;       //< last HTTP GET response code
 
-  typedef boost::detail::spinlock PageLock_t;
   PageLock_t pageLock;    //< lock this to safely read this->pageContent.
   std::string pageContent;//< html content
 

@@ -30,7 +30,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
   if (200 != g.responseCode)
     return false;
 
-  std::lock_guard<GrepVars::PageLock_t> lk(g.pageLock); (void)lk;
+  std::lock_guard<PageLock_t> lk(g.pageLock); (void)lk;
   g.pageContent = rq.ctx->response;
 //  std::cerr << g.pageContent << std::endl;
   g.pageIsReady = true;
@@ -64,17 +64,8 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
     g.matchTextVector.clear();
 
     //grep the grepExpr within pageContent:
-    {//push match results into the vector
-      boost::smatch matchedText;
-      boost::regex_search(g.pageContent, matchedText, g.grepExpr);
-      for(size_t matchIdx = 0; matchIdx < matchedText.size(); ++matchIdx)
-        {
-          auto subitem = &(matchedText[matchIdx]);
-          auto diff = subitem->second - subitem->first;
-          auto begin = g.pageContent.begin() + matchedText.position(matchIdx);
-          g.matchTextVector.push_back(GrepVars::CIteratorPair(begin, begin + diff));
-        }
-    }
+    boost::smatch matchedText;
+    boost::regex_search(g.pageContent, matchedText, g.grepExpr);
 
     //grep the http:// URLs and spawn new nodes:
     std::string temp;
@@ -116,10 +107,24 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
             matches[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
           }
       }
-    //match http://
-    //      boost::regex_search(g.pageContent, matchHttp, w->urlGrepExpr);
 
+    //---------------------------------------------------------------
     //put all together:
+    //---------------------------------------------------------------
+
+    {//-------- criticals section BEGIN ----------
+      std::lock_guard<PageLock_t> lk(g.pageLock); (void)lk;
+      //push text match results into the vector
+      for(size_t matchIdx = 0; matchIdx < matchedText.size(); ++matchIdx)
+        {
+          auto subitem = &(matchedText[matchIdx]);
+          auto diff = subitem->second - subitem->first;
+          auto begin = g.pageContent.begin() + matchedText.position(matchIdx);
+          g.matchTextVector.push_back(GrepVars::CIteratorPair(begin, begin + diff));
+        }
+
+
+    //push matched URLS
     for(auto iter = matches.begin(); iter != matches.end(); ++iter)
       {
         const std::string& key((*iter).first);
@@ -137,6 +142,8 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
           }
       }
     //end grep http
+
+    }//--------- critical section END ----------
 
   }
   catch(const std::exception& ex)
@@ -199,6 +206,10 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
   auto child = ItemLoadAcquire(task->child);
   for(; nullptr != child; child = ItemLoadAcquire(child->next))
     {
+      std::array<char, 64> temp; temp.fill(0);
+      ::snprintf(temp.data(),temp.size(),"SubTask %p Worker %p", child, w);
+      child->grepVars.pageLock.logName = temp.data();
+
       w->sheduleTask([child, w](){FuncDownloadGrepRecursive(child, w);});
     }
    return true;
