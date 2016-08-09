@@ -84,13 +84,13 @@ public:
   void shallowCopy(const LinkedTask& other);
 
   /** Create subtree (level + 1) at (LinkedTask)child.load() pointer.
-   * If subtree was already there, the old nodes will be pushed back
-   * on the same level.
+   * It'll replace old subtree if present, the caller must take ownership..
    *
-   * @param nodesCount : greater than 0
-   * @return quantity of nodes spawned;
+   * @param expelledChild: ref. of a pointer to keep previous child,
+   * call takes ownership and must delete all it's items as well.
+   * @return new child node or NULL on caught exception.
  */
-  size_t spawnChildNodes(size_t nodesCount);
+  LinkedTask* spawnChildNode(LinkedTask*& expelledChild);
 
   /** traverse to the last item on current tree level
    * @return last item if exists, (this) otherwise. */
@@ -99,9 +99,9 @@ public:
   /** Append items to (.next) node (on the same tree level)*/
   size_t spawnNextNodes(size_t nodesCount);
 
-  /** Scan grepVars.matchURLVector[] and create next level subtree(subtasks).
+  /** Scan targetVariables.matchURLVector[] and create linked list of subtasks on CURRENT LEVEL.
    * @return quantity of subtasks spawned. */
-  size_t spawnGreppedSubtasks(const std::string& host_and_port);
+  size_t spawnGreppedSubtasks(const std::string& host_and_port, const GrepVars& targetVariables);
 
   //level of this node
   unsigned level, order;

@@ -9,36 +9,37 @@ void TraverseFunc(LinkedTask* head, void* additional,
 {
   if (nullptr == head || nullptr == func)
     return;
+
+  func(head, additional);
   LinkedTask* next = ItemLoadAcquire(head->next);
   for(; nullptr != next; next = ItemLoadAcquire(next->next))
     {
       TraverseFunc(next, additional, func);
     }
   LinkedTask* child = ItemLoadAcquire(head->child);
-  if(nullptr != child) {
-      TraverseFunc(child, additional, func);
-    }
-  func(head, additional);
+  TraverseFunc(child, additional, func);
 }
 
 // Recursively traverse the list and call functor on each item
 void TraverseFunctor(LinkedTask* head, void* additional,
                      std::function<void(LinkedTask*, void* additional/*nullptr*/)> func)
 {
-  std::cerr << "......\n";
+
+//  std::cerr << "......\n";
   if (nullptr == head || nullptr == func)
-    return;
+    {
+//      std::cerr << "-----------\n";
+      return;
+    }
+
+  func(head, additional);
   LinkedTask* next = ItemLoadAcquire(head->next);
   for(; nullptr != next; next = ItemLoadAcquire(next->next))
     {
       TraverseFunctor(next, additional, func);
     }
   LinkedTask* child = ItemLoadAcquire(head->child);
-  if(nullptr != child) {
-      TraverseFunctor(child, additional, func);
-    }
-
-  func(head, additional);
+  TraverseFunctor(child, additional, func);
 }
 
 static void DeleteCall(LinkedTask* item, void* data)
@@ -130,44 +131,24 @@ size_t LinkedTask::spawnNextNodes(size_t nodesCount)
   return c;
 }
 
-size_t LinkedTask::spawnChildNodes(size_t nodesCount)
+LinkedTask* LinkedTask::spawnChildNode(LinkedTask*& expelledChild)
 {
-  if (0 == nodesCount)
-    return 0;
-
-  //backup pointer to exsiting childs:
-  LinkedTask* existing_bkup = ItemLoadAcquire(this->child);
-  LinkedTask* item = nullptr;
-  size_t spawnCnt = 0;
+  expelledChild = ItemLoadAcquire(child);
   try {
-    //spawn subtree list's head:
-    StoreAcquire(child, new LinkedTask);
-    item = (LinkedTask*)child.load();
-    {
-      item->shallowCopy(*this);
-      item->parent.store((std::uintptr_t)this);
-      item->level = 1u + this->level;
-      item->order = childNodesCount.load(std::memory_order_acquire);
-      this->childNodesCount.fetch_add(1);
-    }
-    if (++spawnCnt < nodesCount)
-      {
-        spawnCnt += item->spawnNextNodes(nodesCount - 1);
-      }
-
+    auto item = new LinkedTask;
+    StoreAcquire(child, item);
+    item->shallowCopy(*this);
+    item->parent.store((std::uintptr_t)this);
+    item->level = 1u + this->level;
+    item->order = childNodesCount.load(std::memory_order_acquire);
+    this->childNodesCount.fetch_add(1);
+    return item;
   } catch(std::exception& ex)
   {
     std::cerr << __FUNCTION__ << std::endl;
     std::cerr << ex.what() << std::endl;
   }
-  //now node is a pointer to last element or zero
-  //put previously spawned child nodes to the end of a new list:
-  if (nullptr != existing_bkup && nullptr != item)
-    {
-      StoreAcquire(item->next, existing_bkup);
-    }
-
-  return spawnCnt;
+  return nullptr;
 }
 
 size_t ForEachOnBranch(LinkedTask* head,
@@ -175,23 +156,25 @@ size_t ForEachOnBranch(LinkedTask* head,
                        bool includingHead, void* additional)
 {
   LinkedTask* item = includingHead? head : ItemLoadAcquire(head->next);
-  for(size_t cnt = 0; nullptr != item; ++cnt, item = ItemLoadAcquire(item->next))
+  size_t cnt = 0;
+  for(; nullptr != item; ++cnt, item = ItemLoadAcquire(item->next))
     {
       functor(item, additional);
     }
   return cnt;
 }
 
-size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port)
+size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const GrepVars& targetVariables)
 {
   if (!grepVars.pageIsParsed)
     return 0;
 
-  auto func = [](LinkedTask* node, void*)
+  size_t cposition = 0;
+  auto func = [this, &cposition, &host_and_port, &targetVariables](LinkedTask* node, void*)
   {
     std::string& turl(node->grepVars.targetUrl);
-    turl.assign(grepVars.matchURLVector[c].first,
-                grepVars.matchURLVector[c].second);
+    turl.assign(targetVariables.matchURLVector[cposition].first,
+                targetVariables.matchURLVector[cposition].second);
     auto httpPos = turl.find_first_of("http");
     if (std::string::npos != httpPos)
       {
@@ -200,7 +183,11 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port)
     //deal with local href links: href=/resource.html or leave if href="http://.."
     //grab http:// or https://
     auto nodeParent = ItemLoadAcquire(node->parent);
-    localLink = nodeParent->grepVars.targetUrl.substr(0, 3 + grepVars.targetUrl.find_first_of("://"));
+    if (nullptr == nodeParent)
+      //case it's the root node:
+      nodeParent = this;
+
+    std::string localLink = nodeParent->grepVars.targetUrl.substr(0, 3 + grepVars.targetUrl.find_first_of("://"));
     // append site.com:443
     localLink += host_and_port;
     // append local resource URI
@@ -208,13 +195,14 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port)
       localLink += "/";
     localLink += turl;
     turl = localLink;
+    ++cposition;
   };
 
   //spawn N items (leafs) on current branch
   size_t spawnedListSize = spawnNextNodes(grepVars.matchURLVector.size());
-
   //for each leaf: configure it with target URL:
-  size_t cnt = ForEachOnBranch(this, func, true);
+  size_t cnt = ForEachOnBranch(this, func, false/*skip head*/);
+  linksCounterPtr->fetch_add(cnt);
   return std::min(cnt, spawnedListSize);
 }
 

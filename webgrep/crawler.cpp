@@ -153,31 +153,24 @@ bool Crawler::start(const std::string& url,
 
   //submit a root-task: get the first page and then follow it's content's links in new threads
   auto fn = [this, worker]() {
+      WebGrep::LinkedTask* root = pv->firstPageTask.get();
       //this functor will wake-up pending task from another thread
-      FuncGrepOne(pv->firstPageTask.get(), worker);
-      pv->firstPageTask->spawnGreppedSubtasks(worker->hostPort);
-      std::string temp;
-      GrepVars& g(pv->firstPageTask->grepVars);
-      for(size_t cnt = 0; cnt < g.matchURLVector.size(); ++cnt)
-        {
-          temp.assign(g.matchURLVector[cnt].first, g.matchURLVector[cnt].second);
-          std::cerr << temp << std::endl;
-        }
+      FuncGrepOne(root, worker);
+      size_t spawnedCnt = root->spawnGreppedSubtasks(worker->hostPort, root->grepVars);
+      std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
 
       //ventillate subtasks:
       std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
       size_t item = 0;
 
-      //rearrange first task's spawned subitems to different independent contexts:
-      for(auto node = WebGrep::ItemLoadAcquire(pv->firstPageTask->child);
-          nullptr != node;
-          ++item %= pv->workContexts.size(), node = WebGrep::ItemLoadAcquire(node->next) )
-        {
-          auto ctx = pv->workContexts[item];
-          //submit recursive grep for each 1-st level subtask:
+      WebGrep::ForEachOnBranch(pv->firstPageTask.get(),
+                               [this, &item](LinkedTask* node, void*)
+      {
+          //submit recursive grep for each 1-st level subtask to different workers:
+          auto ctx = pv->workContexts[item++ % pv->workContexts.size()];
           pv->workersPool->submit([node, ctx]
                                   (){ FuncDownloadGrepRecursive(node, ctx); });
-        }
+      }, false/*skip root*/);
     };
   try {
     pv->workersPool->submit(fn);

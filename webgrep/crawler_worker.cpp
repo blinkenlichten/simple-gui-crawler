@@ -177,24 +177,26 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
 
     //grep the grepExpr within pageContent:
     boost::smatch matchedText;
-    boost::regex_search(g.pageContent, matchedText, g.grepExpr);
+    bool gotText = boost::regex_search(g.pageContent, matchedText, g.grepExpr);
 
     //grep the http:// URLs and spawn new nodes:
-    boost::smatch matchURL;
+    boost::smatch matchURL, matchURL2;
 
     //match href="URL"
-    boost::regex_search(g.pageContent, matchURL, w->hrefGrepExpr);
-    PostProcHrefLinks(matches, matchURL, g);
+    if(boost::regex_search(g.pageContent, matchURL, w->hrefGrepExpr)) {
+        PostProcHrefLinks(matches, matchURL, g);
+      }
 
-    boost::regex_search(g.pageContent, matchURL, w->hrefGrepExpr2);
-    PostProcHrefLinks(matches, matchURL, g);
+    if(boost::regex_search(g.pageContent, matchURL2, w->hrefGrepExpr2)) {
+        PostProcHrefLinks(matches, matchURL2, g);
+      }
     //---------------------------------------------------------------
     //put all together:
     //---------------------------------------------------------------
 
     {//-------- export section BEGIN ----------
       //push text match results into the vector
-      for(size_t matchIdx = 0; matchIdx < matchedText.size(); ++matchIdx)
+      for(size_t matchIdx = 0; gotText && matchIdx < matchedText.size(); ++matchIdx)
         {
           auto subitem = &(matchedText[matchIdx]);
           auto diff = subitem->second - subitem->first;
@@ -252,14 +254,11 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
 {
   //case stopped by force:
   if (nullptr == task->linksCounterPtr || !w->running)
-    {
-      return false;
-    }
+    { return false; }
 
-  //max. links reached, lets stop the parsing
-  size_t cnt = task->linksCounterPtr->load(std::memory_order_acquire);
-  if (cnt >= task->maxLinksCountPtr->load(std::memory_order_acquire))
-    {
+  size_t link_cnt = task->linksCounterPtr->load(std::memory_order_acquire);
+  if (link_cnt >= task->maxLinksCountPtr->load(std::memory_order_acquire))
+    {//max. links reached, lets stop the parsing
       w->onMaximumLinksCount(task, w);
       return true;
     }
@@ -275,23 +274,28 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
       //no URLS then no subtree items.
       return true;
     }
+  LinkedTask* old = nullptr;
+  LinkedTask* child = task->spawnChildNode(old); DeleteList(old);
 
   //create next level linked list from grepped URLS:
-  size_t n_subtasks = task->spawnGreppedSubtasks(w->hostPort);
+  size_t n_subtasks = child->spawnGreppedSubtasks(w->hostPort, task->grepVars);
 
   //emit signal that we've spawned a new level:
   if (0 != n_subtasks && nullptr != w->childLevelSpawned)
     {
-      w->childLevelSpawned(ItemLoadAcquire(task->child), w);
+      w->childLevelSpawned(child, w);
     }
 
-  //for each child node of subtree: schedule tasks to parse them too
-  auto child = ItemLoadAcquire(task->child);
-  for(; nullptr != child; child = ItemLoadAcquire(child->next))
-    {
-      w->sheduleTask([child, w](){FuncDownloadGrepRecursive(child, w);});
-    }
-   return true;
+  std::cerr << __FUNCTION__ << " scheduling " << n_subtasks << " tasks more.\n";
+  WebGrep::ForEachOnBranch(child,
+                           [w](LinkedTask* _node, void*)
+  {
+    //for node of subtree: schedule this task again to parse them too
+    w->sheduleTask([_node, w](){ FuncDownloadGrepRecursive(_node, w);});
+  },
+  true/*including head*/);
+
+  return true;
 }
 
 //---------------------------------------------------------------

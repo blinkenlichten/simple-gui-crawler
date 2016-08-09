@@ -38,8 +38,14 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w);
 bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w);
 
 /** Call FuncDownloadOne(task,w) multiple times: once for each new http:// URL
- *  in a page's content. It won't use resursion, but will utilize appropriate
+ *  in a page's content. It won't use recursion, but will utilize appropriate
  *  callbacks to put new tasks as functors in a multithreaded work queue.
+ *
+ *  What it does with the list (LinkedTask*) task?
+ *  It spawns .child item assigning it (level + 1), it'll be head of a new list
+ *  that will contain parse results for the task's page and other subtasks,
+ *  appearance of each subtask is caused by finding a URL that we can grep
+ *  until counter's limit is reached.
 */
 bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w);
 //---------------------------------------------------------------

@@ -167,11 +167,20 @@ void Widget::onCheckOutTimer()
 //-----------------------------------------------------------------------------
 void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGrep::LinkedTask* node)
 {
+  if (nullptr == rootNode)
+    return;
+
+  float r = (float)rootNode->linksCounterPtr->load();
+  r /= (float)rootNode->maxLinksCountPtr->load();
+  r *= 100;
+
   /** Spawns items that display status of page scan.**/
-//  auto funcListsFill = std::bind(&Widget::populateListsFunction, this, node, (void*)nullptr);
-  auto funcListsFill = std::bind(&Widget::print, this, node, (void*)nullptr);
+  auto funcListsFill = [this](WebGrep::LinkedTask* head, void* additional)
+  { this->populateListsFunction(head, additional); };
+
   //------- CRITICAL SECTION ---->>>>
   std::lock_guard<boost::detail::spinlock> lk(guiLock); (void)lk;
+  ui->progressBar->setValue(r);
   ui->listWidgetPending->clear();
 
   if (this->mainNode != rootNode)
@@ -180,7 +189,6 @@ void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGre
       mainNode = rootNode;
     }
   //case working with previous items tree
-  std::cerr << "*******************************\n";
   WebGrep::TraverseFunctor(mainNode.get(), nullptr, funcListsFill);
   //<<<<--- CRITICAL SECTION ---------
 }
