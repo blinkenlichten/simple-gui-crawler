@@ -5,6 +5,7 @@
 #include <QTextEdit>
 #include <QListWidgetItem>
 #include <memory>
+#include "boost/smart_ptr/detail/spinlock.hpp"
 
 class QTimer;
 
@@ -31,6 +32,8 @@ public:
   explicit Widget(QWidget *parent = 0);
   virtual ~Widget();
 
+  typedef std::function<void()> Functor_t;
+
 public slots:
   // check provided GUI arguments and start the crawler
   void onStart();
@@ -44,6 +47,9 @@ public slots:
   //invoked by the parser on each page grep finished
   void onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode,
                      WebGrep::LinkedTask* node);
+
+  void onFunctor(Functor_t);
+
 private slots:
   void onCheckOutTimer();
 

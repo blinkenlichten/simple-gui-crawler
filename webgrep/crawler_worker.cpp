@@ -151,11 +151,9 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
 {
   GrepVars& g(task->grepVars);
   g.pageIsParsed = false;
+  g.pageIsReady = false;
 
-  if (!g.pageIsReady)
-    {
-      FuncDownloadOne(task, w);
-    }
+  FuncDownloadOne(task, w);
   if (!g.pageIsReady || g.pageContent.empty())
     return false;
 

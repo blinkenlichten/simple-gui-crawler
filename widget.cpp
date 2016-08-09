@@ -17,6 +17,7 @@ Widget::Widget(QWidget *parent) :
   ui(new Ui::Widget)
 {
   QTextCodec::setCodecForLocale(QTextCodec::codecForName("UTF-8"));
+  qRegisterMetaType<Functor_t>("Functor_t");
 
   ui->setupUi(this);
   setLayout(ui->topLayout);
@@ -149,19 +150,13 @@ void Widget::onList2Clicked(QListWidgetItem* item)
     }
 }
 //-----------------------------------------------------------------------------
-//We'll not eat too much CPU cycles, I promise!
-static boost::detail::spinlock guiLock;
 //-----------------------------------------------------------------------------
 
+//must work only in GUI thread:
 void Widget::onCheckOutTimer()
 {
-  {
-    //------- CRITICAL SECTION ---->>>>
-    std::lock_guard<boost::detail::spinlock> lk(guiLock); (void)lk;
-    ui->listWidgetPending->clear();
-    ui->listWidgetReady->clear();
-    //<<<<--- CRITICAL SECTION ---------
-  }
+  ui->listWidgetPending->clear();
+  ui->listWidgetReady->clear();
   onPageScanned(mainNode, mainNode.get());
 }
 //-----------------------------------------------------------------------------
@@ -179,17 +174,25 @@ void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGre
   { this->populateListsFunction(head, additional); };
 
   //------- CRITICAL SECTION ---->>>>
-  std::lock_guard<boost::detail::spinlock> lk(guiLock); (void)lk;
-  ui->progressBar->setValue(r);
-  ui->listWidgetPending->clear();
+  //dispatch a functor that has some GUI things to be done
+  auto ftor = std::function<void()>(
+                    [this, r, rootNode, funcListsFill]()
+    {
+      ui->progressBar->setValue(r);
+      ui->listWidgetPending->clear();
 
-  if (this->mainNode != rootNode)
-    {//case the tree is new,
-      ui->listWidgetReady->clear();
-      mainNode = rootNode;
-    }
-  //case working with previous items tree
-  WebGrep::TraverseFunctor(mainNode.get(), nullptr, funcListsFill);
+      if (this->mainNode != rootNode)
+        {//case the tree is new,
+          ui->listWidgetReady->clear();
+          mainNode = rootNode;
+        }
+      //case working with previous items tree
+      WebGrep::TraverseFunctor(mainNode.get(), nullptr, funcListsFill);
+
+    });
+
+  QMetaObject::invokeMethod(this, "onFunctor", Qt::QueuedConnection,
+                            Q_ARG(Functor_t, ftor) );
   //<<<<--- CRITICAL SECTION ---------
 }
 //-----------------------------------------------------------------------------
@@ -209,18 +212,21 @@ void Widget::onStart()
       return;
     }
   QString input = ui->textEdit->toPlainText();
-  if (input.isEmpty() || input.contains("Error: "))
+  if (input.contains("Error: "))
     {
-      ui->textEdit->setText("Hint: please, enter exact word or Perl syntax regexp. here");
+      ui->textEdit->clear();
       return;
     }
-  if (input.contains("Hint: "))
-    return;
   crawler->start(ui->addressEdit->text().toStdString(),
                  ui->textEdit->toPlainText().toStdString(),
                  nlinks, ui->dial->value());
 }
 //-----------------------------------------------------------------------------
+void Widget::onFunctor(Functor_t func)
+{
+  func();
+}
+
 void Widget::paintEvent(QPaintEvent *event)
 {
   std::shared_ptr<QString> msg = bufferedErrorMsg;
