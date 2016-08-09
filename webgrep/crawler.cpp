@@ -9,6 +9,7 @@
 #include "boost/thread/thread_pool.hpp"
 #include <stdio.h>
 #include <cstdlib>
+#include <cassert>
 
 namespace WebGrep {
 
@@ -29,6 +30,22 @@ public:
       std::cout << "subtask completed: " << task->grepVars.targetUrl << "\n";
       std::cout << "subtask content: \n" << task->grepVars.pageContent << "\n";
     };
+
+    std::cerr << __FUNCTION__ << " self test: \n";
+    try {
+        std::shared_ptr<WebGrep::LinkedTask> lq;
+        lq.reset(new LinkedTask,
+                 [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
+        LinkedTask* tmp = 0;
+        auto child = lq->spawnChildNode(tmp);
+        size_t n = child->spawnNextNodes(1024);
+        assert(n == 1024);
+    } catch(std::exception& ex) {
+      std::cerr << " FAILED with exception: "
+               << ex.what() << "\n";
+    }
+    std::cerr << "OKAY\n";
+
   }
 
   virtual ~CrawlerPV()

@@ -7,39 +7,20 @@ namespace WebGrep {
 void TraverseFunc(LinkedTask* head, void* additional,
                   void(*func)(LinkedTask*, void*))
 {
-  if (nullptr == head || nullptr == func)
-    return;
-
+  if (nullptr == head || nullptr == func) return;
+  WebGrep::ForEachOnBranch(ItemLoadAcquire(head->next), [func](LinkedTask* _Task, void* _Data){ func(_Task, _Data); }, additional);
+  TraverseFunc(ItemLoadAcquire(head->child), additional, func);
   func(head, additional);
-  LinkedTask* next = ItemLoadAcquire(head->next);
-  for(; nullptr != next; next = ItemLoadAcquire(next->next))
-    {
-      TraverseFunc(next, additional, func);
-    }
-  LinkedTask* child = ItemLoadAcquire(head->child);
-  TraverseFunc(child, additional, func);
 }
 
 // Recursively traverse the list and call functor on each item
 void TraverseFunctor(LinkedTask* head, void* additional,
                      std::function<void(LinkedTask*, void* additional/*nullptr*/)> func)
 {
-
-//  std::cerr << "......\n";
-  if (nullptr == head || nullptr == func)
-    {
-//      std::cerr << "-----------\n";
-      return;
-    }
-
+  if (nullptr == head || nullptr == func) return;
+  WebGrep::ForEachOnBranch(ItemLoadAcquire(head->next), [func](LinkedTask* _Task, void* _Data){ func(_Task, _Data); }, additional);
+  TraverseFunctor(ItemLoadAcquire(head->child), additional, func);
   func(head, additional);
-  LinkedTask* next = ItemLoadAcquire(head->next);
-  for(; nullptr != next; next = ItemLoadAcquire(next->next))
-    {
-      TraverseFunctor(next, additional, func);
-    }
-  LinkedTask* child = ItemLoadAcquire(head->child);
-  TraverseFunctor(child, additional, func);
 }
 
 static void DeleteCall(LinkedTask* item, void* data)
@@ -118,7 +99,6 @@ size_t LinkedTask::spawnNextNodes(size_t nodesCount)
         {
           item->shallowCopy(*this);
           StoreAcquire(item->parent, this);
-          item->level = 1u + this->level;
           item->order = childNodesCount.load(std::memory_order_acquire);
           this->childNodesCount.fetch_add(1);
         }
@@ -155,7 +135,7 @@ size_t ForEachOnBranch(LinkedTask* head,
                        std::function<void(LinkedTask*, void*)> functor,
                        bool includingHead, void* additional)
 {
-  LinkedTask* item = includingHead? head : ItemLoadAcquire(head->next);
+  LinkedTask* item = includingHead? head : (nullptr != head? ItemLoadAcquire(head->next) : nullptr );
   size_t cnt = 0;
   for(; nullptr != item; ++cnt, item = ItemLoadAcquire(item->next))
     {
