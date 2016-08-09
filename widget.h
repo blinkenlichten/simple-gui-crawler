@@ -6,6 +6,8 @@
 #include <QListWidgetItem>
 #include <memory>
 
+class QTimer;
+
 namespace WebGrep {
   class Crawler;
   class LinkedTask;
@@ -17,7 +19,7 @@ namespace Ui {
 
 
 enum class WIDGET_TAB_IDX {
-  FOUND_TEXT = 0, PAGE_RENDER, GRAPH_RENDER
+  FOUND_TEXT = 0, PAGE_RENDER, TEXT_RENDER, GRAPH_RENDER
 };
 
 /** Main widget, displays web pages crawling results. */
@@ -42,20 +44,26 @@ public slots:
   //invoked by the parser on each page grep finished
   void onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode,
                      WebGrep::LinkedTask* node);
+private slots:
+  void onCheckOutTimer();
 
 private:
+  void populateListsFunction(WebGrep::LinkedTask* head, void*);
+
+  void print(WebGrep::LinkedTask* head, void*);
+
   Ui::Widget *ui;
   std::shared_ptr<WebGrep::Crawler> crawler;//< the crawler
   std::shared_ptr<QString> bufferedErrorMsg;//< set to display
   bool hasError;
-  QTextEdit* webPage;//< primitive HTML renderer, without images etc.
+  QTextEdit* webPage, *textDraw;//< primitive HTML renderer, without images etc.
 
   QString guiTempString;
+  QTimer* checkOutTimer;
 
   //stores all downloaded pages and match results in a linked list
   std::shared_ptr<WebGrep::LinkedTask> mainNode;
 
-//  GraphWidget* graphView;
 };
 
 #endif // WIDGET_H

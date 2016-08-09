@@ -6,6 +6,7 @@
 #include <atomic>
 
 #include <mutex>
+#include <functional>
 #include <iostream>
 
 namespace WebGrep {
@@ -53,6 +54,13 @@ void TraverseFunctor(LinkedTask* head, void* additional,
 
 // Free memory recursively. NOT THREAD SAFE! Must be syncronized.
 void DeleteList(LinkedTask* head);
+
+/** Apply functor for each item on same branch accessed by(head->next)
+ * @return how much times functor has been invoked.
+ */
+size_t ForEachOnBranch(LinkedTask* head,
+                       std::function<void(LinkedTask*, void*)> functor,
+                       bool includingHead = true, void* additional = nullptr);
 //---------------------------------------------------------------
 
 
@@ -84,6 +92,13 @@ public:
  */
   size_t spawnChildNodes(size_t nodesCount);
 
+  /** traverse to the last item on current tree level
+   * @return last item if exists, (this) otherwise. */
+  LinkedTask* getLastOnLevel();
+
+  /** Append items to (.next) node (on the same tree level)*/
+  size_t spawnNextNodes(size_t nodesCount);
+
   /** Scan grepVars.matchURLVector[] and create next level subtree(subtasks).
    * @return quantity of subtasks spawned. */
   size_t spawnGreppedSubtasks(const std::string& host_and_port);
@@ -107,9 +122,24 @@ public:
 };
 //---------------------------------------------------------------
 static inline LinkedTask* ItemLoadAcquire(std::atomic_uintptr_t& value)
+{ return (LinkedTask*)value.load(std::memory_order_acquire); }
+
+static inline LinkedTask* ItemLoadRelaxed(std::atomic_uintptr_t& value)
+{ return (LinkedTask*)value.load(std::memory_order_relaxed); }
+
+
+static inline std::atomic_uintptr_t& StoreAcquire(std::atomic_uintptr_t& atom, LinkedTask* ptr)
 {
-  return (LinkedTask*)value.load(std::memory_order_acquire);
+  atom.store((std::uintptr_t)ptr, std::memory_order_acquire);
+  return atom;
 }
+
+static inline std::atomic_uintptr_t& StoreRelease(std::atomic_uintptr_t& atom, LinkedTask* ptr)
+{
+  atom.store((std::uintptr_t)ptr, std::memory_order_release);
+  return atom;
+}
+
 
 }//WebGrep
 
