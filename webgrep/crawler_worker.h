@@ -3,7 +3,6 @@
 
 #include <memory>
 #include <functional>
-#include <mutex>
 #include <thread>
 #include <condition_variable>
 #include <boost/lockfree/queue.hpp>
@@ -20,7 +19,7 @@ namespace WebGrep {
 
 //---------------------------------------------------------------
 struct WorkerCtx;
-typedef std::shared_ptr<WorkerCtx> WorkerCtxPtr;
+typedef WorkerCtx* WorkerCtxPtr;
 //---------------------------------------------------------------
 /** Downloads the page content and stores it in (GrepVars)task->grepVars
  *  variable, (volatile bool)task->grepVars.pageIsReady will be set to TRUE
@@ -61,10 +60,6 @@ struct WorkerCtx
     running = true;
   }
 
-  //used to notify pending tasks on the current one:
-  std::condition_variable cond;
-  std::mutex taskMutex;
-
   WebGrep::Client httpClient;
   std::string hostPort;
   boost::regex urlGrepExpr, hrefGrepExpr, hrefGrepExpr2;
@@ -73,18 +68,20 @@ struct WorkerCtx
 
   //the tasks can schedule subtasks
   typedef std::function<void()> CallableFunc_t;
+
+  /** Call this one to shedule a new task:*/
   std::function<void(CallableFunc_t)> sheduleTask;
 
-  //callbacks, all three are set externally:
+  //---- callbacks, all three are set by the working functions -------
 
-  //when max. links count reached.
-  std::function<void(LinkedTask*, WorkerCtxPtr)> onMaximumLinksCount;
+  /** when max. links count reached.*/
+  std::function<void(LinkedTask*)> onMaximumLinksCount;
 
   /** Invoked on each page parsed.*/
-  std::function<void(LinkedTask*, std::shared_ptr<WorkerCtx> w)> pageMatchFinishedCb;
+  std::function<void(LinkedTask*)> pageMatchFinishedCb;
 
   /** Invoked when a new level of child nodes has spawned, */
-  std::function<void(LinkedTask*,std::shared_ptr<WorkerCtx> w)> childLevelSpawned;
+  std::function<void(LinkedTask*)> childLevelSpawned;
 
 
   volatile bool running;//< used for subtask spawn pausing

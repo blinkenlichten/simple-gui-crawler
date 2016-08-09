@@ -243,7 +243,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
   g.pageIsParsed = true;
   if (w->pageMatchFinishedCb)
     {
-      w->pageMatchFinishedCb(task, w);
+      w->pageMatchFinishedCb(task);
     }
   return g.pageIsReady && g.pageIsParsed;
 }
@@ -257,7 +257,9 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
   size_t link_cnt = task->linksCounterPtr->load(std::memory_order_acquire);
   if (link_cnt >= task->maxLinksCountPtr->load(std::memory_order_acquire))
     {//max. links reached, lets stop the parsing
-      w->onMaximumLinksCount(task, w);
+      if (w->onMaximumLinksCount) {
+          w->onMaximumLinksCount(task);
+        }
       return true;
     }
   //download one page:
@@ -281,7 +283,7 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
   //emit signal that we've spawned a new level:
   if (0 != n_subtasks && nullptr != w->childLevelSpawned)
     {
-      w->childLevelSpawned(child, w);
+      w->childLevelSpawned(child);
     }
 
   std::cerr << __FUNCTION__ << " scheduling " << n_subtasks << " tasks more.\n";

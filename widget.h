@@ -20,7 +20,7 @@ namespace Ui {
 
 
 enum class WIDGET_TAB_IDX {
-  FOUND_TEXT = 0, PAGE_RENDER, TEXT_RENDER, GRAPH_RENDER
+  URL_LISTS = 0, PAGE_RENDER, TEXT_MATCH_RENDER, GRAPH_RENDER
 };
 
 /** Main widget, displays web pages crawling results. */
@@ -48,10 +48,14 @@ public slots:
   void onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode,
                      WebGrep::LinkedTask* node);
 
+  //sets threads number in runtime:
+  void onDialValue(int value);
+
   void onFunctor(Functor_t);
 
 private slots:
   void onCheckOutTimer();
+  void onHelpClicked();
 
 private:
   void populateListsFunction(WebGrep::LinkedTask* head, void*);

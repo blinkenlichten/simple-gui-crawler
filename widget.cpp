@@ -24,7 +24,7 @@ Widget::Widget(QWidget *parent) :
 
   ui->groupBoxText->setLayout(ui->horizontalLayoutText);
   QTabWidget* tabw = ui->tabWidget;
-  QWidget* listsWidget = tabw->widget((int)WIDGET_TAB_IDX::FOUND_TEXT);
+  QWidget* listsWidget = tabw->widget((int)WIDGET_TAB_IDX::URL_LISTS);
   listsWidget->setLayout(ui->listVerticalLayout_2);
 
   QWidget* pageWidget = tabw->widget((int)WIDGET_TAB_IDX::PAGE_RENDER);
@@ -37,7 +37,7 @@ Widget::Widget(QWidget *parent) :
   webPage = new QTextEdit(pageWidget);
   ui->pageHorizontalLayout->addWidget(webPage);
 
-  auto textWidget = tabw->widget((int)WIDGET_TAB_IDX::TEXT_RENDER);
+  auto textWidget = tabw->widget((int)WIDGET_TAB_IDX::TEXT_MATCH_RENDER);
   textWidget->setLayout(ui->verticalLayoutTextMatches);
   textDraw = new QTextEdit(textWidget);
   textDraw->setAcceptRichText(false);
@@ -49,6 +49,7 @@ Widget::Widget(QWidget *parent) :
 
   crawler = std::make_shared<WebGrep::Crawler>();
 
+  connect(ui->dial, &QDial::valueChanged, this, &Widget::onDialValue);
 
   connect(ui->buttonStart, &QPushButton::clicked,
           this, &Widget::onStart, Qt::DirectConnection);
@@ -57,6 +58,8 @@ Widget::Widget(QWidget *parent) :
   checkOutTimer = new QTimer(this);
   connect(checkOutTimer, &QTimer::timeout, this, &Widget::onCheckOutTimer, Qt::DirectConnection);
   checkOutTimer->start(2000);
+
+  connect(ui->helpButton, &QPushButton::clicked, this, &Widget::onHelpClicked);
 
   //on click in second list -> show downloaded .html web page
   connect(ui->listWidgetReady, &QListWidget::itemActivated,
@@ -227,6 +230,11 @@ void Widget::onFunctor(Functor_t func)
   func();
 }
 
+void Widget::onDialValue(int value)
+{
+  crawler->setThreadsNumber((unsigned)value);
+}
+
 void Widget::paintEvent(QPaintEvent *event)
 {
   std::shared_ptr<QString> msg = bufferedErrorMsg;
@@ -238,3 +246,16 @@ void Widget::paintEvent(QPaintEvent *event)
   QWidget::paintEvent(event);
 }
 //-----------------------------------------------------------------------------
+void Widget::onHelpClicked()
+{
+  QString help = "Enter http:// or http:// address to recursively scan pages for URL.\n";
+  help.append("\nThe round knob regulates quantity of threads used to process tasks asynchronously(mostly).");
+  help.append("\nThe effect of changing threads number is applied immediately, will temporarly suspend scanning of the HTML data.");
+  help.append("\nThe progress bar shows percentage of (current URL count / max. URL number) relation.");
+  help.append("\nOnce the URL counter reach maximum value the recursive search will be set to idle start.");
+  help.append("\nClick \"Start\" button for every new HTTP destination you want to scan.");
+  help.append("\"Stop\" button temporarly stops the scan process, use \"Start\" to continue.");
+  help.append("\n\n Bohdan Maslovskyi  https://github.com/blinkenlichten/test03-03");
+  textDraw->setPlainText(help);
+  ui->tabWidget->setCurrentIndex((int)WIDGET_TAB_IDX::TEXT_MATCH_RENDER);
+}

@@ -20,6 +20,8 @@ class Crawler
 public:
   Crawler();
 
+  static const unsigned maxThreads = 32;
+
   //set threads number, not lesst than 1
   //start() is needed to continue where we've stopped on setThreadsNumber()
   void setThreadsNumber(unsigned nthreads = 1);

@@ -300,7 +300,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="pushButton">
+         <widget class="QPushButton" name="helpButton">
           <property name="maximumSize">
            <size>
             <width>120</width>

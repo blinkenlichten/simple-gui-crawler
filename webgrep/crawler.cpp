@@ -2,7 +2,6 @@
 #include <iostream>
 #include "crawler_worker.h"
 #include <atomic>
-#include <mutex>
 #include <vector>
 #include <thread>
 #include "boost/lockfree/queue.hpp"
@@ -18,33 +17,30 @@ class Crawler::CrawlerPV
 public:
   CrawlerPV()
   {
-    firstPageTask = nullptr;
     maxLinksCount = std::make_shared<std::atomic_uint>();
     currentLinksCount = std::make_shared<std::atomic_uint>();
+
     maxLinksCount->store(4096);
     currentLinksCount->store(0);
-
-    onMainSubtaskCompleted = [this](LinkedTask* task, WorkerCtxPtr)
-    {
-      std::lock_guard<std::mutex> lk(wlistMutex); (void)lk;
-      std::cout << "subtask completed: " << task->grepVars.targetUrl << "\n";
-      std::cout << "subtask content: \n" << task->grepVars.pageContent << "\n";
-    };
+    workersPool = std::make_shared<boost::executors::basic_thread_pool>(4);
 
     std::cerr << __FUNCTION__ << " self test: \n";
     try {
-        std::shared_ptr<WebGrep::LinkedTask> lq;
-        lq.reset(new LinkedTask,
-                 [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
-        LinkedTask* tmp = 0;
-        auto child = lq->spawnChildNode(tmp);
-        size_t n = child->spawnNextNodes(1024);
-        assert(n == 1024);
+      for(unsigned z = 0; z < 4; ++z)
+        {
+          std::shared_ptr<WebGrep::LinkedTask> lq;
+          lq.reset(new LinkedTask,
+                   [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
+          LinkedTask* tmp = 0;
+          auto child = lq->spawnChildNode(tmp);
+          size_t n = child->spawnNextNodes(1024 * z + z);
+          assert(n == (1024 * z + z));
+        }
+      std::cerr << "OKAY\n";
     } catch(std::exception& ex) {
       std::cerr << " FAILED with exception: "
                << ex.what() << "\n";
     }
-    std::cerr << "OKAY\n";
 
   }
 
@@ -56,42 +52,52 @@ public:
     { }
   }
 
+  void stopThreads()
+  {
+    stop();
+    workersPool->close();
+    auto workersCopy = workersPool;
+
+    std::thread waiter([this, workersCopy](){
+        if (nullptr == workersCopy)
+          { return; }
+        try {
+          workersCopy->join();
+        } catch(...)
+        { std::cerr << "Error! Failed to join workers thread!\n";
+        }
+      });
+    waiter.detach();
+  }
+
   void clear()
   {
-    std::lock_guard<std::mutex> lk(wlistMutex); (void)lk;
-    stop(false/*no lock*/);
-    if (nullptr != workersPool)
-      {
-        workersPool->close();
-        workersPool->join();
-      }
-    firstPageTask.reset();
+    stopThreads();
+    taskRoot.reset();
     currentLinksCount->store(0);
   }
 
-  void stop(bool withMLock)
+  void stop()
   {
-    std::shared_ptr<std::lock_guard<std::mutex>> lk;
-    if(withMLock) {
-        lk = std::make_shared<std::lock_guard<std::mutex>> (wlistMutex);
-      }
-    for(WorkerCtxPtr& ctx : workContexts)
+    for(WorkerCtx& ctx : jobContextArray)
       {
-        ctx->running = false;
+        ctx.running = false;
       }
   }
 
   Crawler::OnExceptionCallback_t onException;
   Crawler::OnPageScannedCallback_t onPageScanned;
 
-  std::shared_ptr<LinkedTask> firstPageTask;
+  //main task (for first html page) all other are subtasks
+  std::shared_ptr<LinkedTask> taskRoot;
 
-  std::mutex wlistMutex;
-  std::unique_ptr<boost::executors::basic_thread_pool> workersPool;
-  std::vector<WorkerCtxPtr> workContexts;
+  std::shared_ptr<boost::executors::basic_thread_pool> workersPool;
+
+  //we certainly won't need this to be dynamically resized:
+  std::array<WorkerCtx,Crawler::maxThreads> jobContextArray;
+
+  //these shared by all tasks spawned by the object CrawlerPV:
   std::shared_ptr<std::atomic_uint> maxLinksCount, currentLinksCount;
-
-  std::function<void(LinkedTask*, WorkerCtxPtr)> onMainSubtaskCompleted;
 };
 //---------------------------------------------------------------
 void Crawler::setExceptionCB(OnExceptionCallback_t func)
@@ -119,16 +125,15 @@ bool Crawler::start(const std::string& url,
                     unsigned maxLinks, unsigned threadsNum)
 {
 
-  std::shared_ptr<LinkedTask>& root(pv->firstPageTask);
+  std::shared_ptr<LinkedTask>& root(pv->taskRoot);
 
   try {
     stop();
     setMaxLinks(maxLinks);
     setThreadsNumber(threadsNum);
-    std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
     if (nullptr == root || root->grepVars.targetUrl != url)
       {
-        pv->firstPageTask = nullptr;
+        pv->taskRoot = nullptr;
         //alloc toplevel node:
         root.reset(new LinkedTask,
                    [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
@@ -142,20 +147,20 @@ bool Crawler::start(const std::string& url,
     g->targetUrl = url;
     g->grepExpr = grepRegex;
     auto pv_copy = pv;
-    for(WorkerCtxPtr& ctx : pv->workContexts)
+    for(WorkerCtx& ctx : pv->jobContextArray)
       {//enable workers to spawn subtasks e.g. "start"
-        ctx->pageMatchFinishedCb  = [pv_copy](LinkedTask* node, std::shared_ptr<WorkerCtx>)
+        ctx.pageMatchFinishedCb  = [pv_copy](LinkedTask* node)
         {
           if (pv_copy)
-            pv_copy->onPageScanned(pv_copy->firstPageTask, node);
+            pv_copy->onPageScanned(pv_copy->taskRoot, node);
         };
-        ctx->childLevelSpawned =  [pv_copy](LinkedTask* node, std::shared_ptr<WorkerCtx>)
+        ctx.childLevelSpawned =  [pv_copy](LinkedTask* node)
         {
           if (pv_copy)
-            pv_copy->onPageScanned(pv_copy->firstPageTask, node);
+            pv_copy->onPageScanned(pv_copy->taskRoot, node);
         };
 
-        ctx->running = true;
+        ctx.running = true;
       }
   } catch(std::exception& e)
   {
@@ -166,25 +171,24 @@ bool Crawler::start(const std::string& url,
   }
 
   //just picking up first worker context
-  auto worker = pv->workContexts[0];
+  auto worker = pv->jobContextArray.data();
 
   //submit a root-task: get the first page and then follow it's content's links in new threads
   auto fn = [this, worker]() {
-      WebGrep::LinkedTask* root = pv->firstPageTask.get();
+      WebGrep::LinkedTask* root = pv->taskRoot.get();
       //this functor will wake-up pending task from another thread
       FuncGrepOne(root, worker);
       size_t spawnedCnt = root->spawnGreppedSubtasks(worker->hostPort, root->grepVars);
       std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
 
       //ventillate subtasks:
-      std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
       size_t item = 0;
 
-      WebGrep::ForEachOnBranch(pv->firstPageTask.get(),
+      WebGrep::ForEachOnBranch(pv->taskRoot.get(),
                                [this, &item](LinkedTask* node, void*)
       {
           //submit recursive grep for each 1-st level subtask to different workers:
-          auto ctx = pv->workContexts[item++ % pv->workContexts.size()];
+          auto ctx = pv->jobContextArray.data() + (item++ % pv->jobContextArray.size());
           pv->workersPool->submit([node, ctx]
                                   (){ FuncDownloadGrepRecursive(node, ctx); });
       }, false/*skip root*/);
@@ -193,8 +197,9 @@ bool Crawler::start(const std::string& url,
     pv->workersPool->submit(fn);
   } catch(const std::exception& ex)
   {
+    std::cerr << ex.what() << "\n";
     if(pv->onException)
-      pv->onException(ex.what());
+      { pv->onException(ex.what()); }
     return false;
   }
   return true;
@@ -202,7 +207,7 @@ bool Crawler::start(const std::string& url,
 
 void Crawler::stop()
 {
-  pv->stop(true/*with lock*/);
+  pv->stop();
 }
 
 void Crawler::setMaxLinks(unsigned maxScanLinks)
@@ -219,22 +224,11 @@ void Crawler::setThreadsNumber(unsigned nthreads)
       return;
     }
   try {
-    std::lock_guard<std::mutex> lk(pv->wlistMutex); (void)lk;
-    pv->stop(false/*no mutex lock*/);
-    if (nullptr != pv->workersPool)
-      {
-        pv->workersPool->close();
-        pv->workersPool->join();
-      }
+    pv->stopThreads();
+    pv->workersPool.reset(new boost::basic_thread_pool(nthreads));
+    for(WorkerCtx& ctx : pv->jobContextArray)
+      { ctx.running = pv->jobContextArray[0].running; }
 
-    pv->workContexts.resize(nthreads);
-    for(WorkerCtxPtr& wp : pv->workContexts)
-      {
-        if (nullptr == wp)
-          wp = std::make_shared<WorkerCtx>();
-      }
-
-    pv->workersPool.reset(new boost::executors::basic_thread_pool(nthreads));
   } catch(const std::exception& ex)
   {
     std::cerr << ex.what() << std::endl;

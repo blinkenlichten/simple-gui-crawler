@@ -5,7 +5,6 @@
 #include "boost/noncopyable.hpp"
 #include <atomic>
 
-#include <mutex>
 #include <functional>
 #include <iostream>
 

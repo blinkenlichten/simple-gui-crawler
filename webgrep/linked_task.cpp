@@ -8,9 +8,11 @@ void TraverseFunc(LinkedTask* head, void* additional,
                   void(*func)(LinkedTask*, void*))
 {
   if (nullptr == head || nullptr == func) return;
-  WebGrep::ForEachOnBranch(ItemLoadAcquire(head->next), [func](LinkedTask* _Task, void* _Data){ func(_Task, _Data); }, additional);
-  TraverseFunc(ItemLoadAcquire(head->child), additional, func);
+  LinkedTask* next = ItemLoadAcquire(head->next);
+  LinkedTask* child = ItemLoadAcquire(head->child);
   func(head, additional);
+  TraverseFunc(next, additional, func);
+  TraverseFunc(child, additional, func);
 }
 
 // Recursively traverse the list and call functor on each item
@@ -18,15 +20,16 @@ void TraverseFunctor(LinkedTask* head, void* additional,
                      std::function<void(LinkedTask*, void* additional/*nullptr*/)> func)
 {
   if (nullptr == head || nullptr == func) return;
-  WebGrep::ForEachOnBranch(ItemLoadAcquire(head->next), [func](LinkedTask* _Task, void* _Data){ func(_Task, _Data); }, additional);
-  TraverseFunctor(ItemLoadAcquire(head->child), additional, func);
+  LinkedTask* next = ItemLoadAcquire(head->next);
+  LinkedTask* child = ItemLoadAcquire(head->child);
   func(head, additional);
+  TraverseFunctor(next, additional, func);
+  TraverseFunctor(child, additional, func);
 }
 
 static void DeleteCall(LinkedTask* item, void* data)
 {
-  if ((void*)item == data)
-    return;
+  (void)data;
   delete item;
 }
 
@@ -34,7 +37,6 @@ static void DeleteCall(LinkedTask* item, void* data)
 void DeleteList(LinkedTask* head)
 {
   TraverseFunc(head, head, &DeleteCall);
-  delete head;
 }
 //---------------------------------------------------------------
 LinkedTask::LinkedTask() : level(0)

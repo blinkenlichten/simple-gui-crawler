@@ -1,5 +1,6 @@
 #include "widget.h"
 #include <QApplication>
+#include "webgrep/crawler.h"
 
 int main(int argc, char *argv[])
 {
