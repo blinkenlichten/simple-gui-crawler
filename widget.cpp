@@ -165,6 +165,7 @@ void Widget::onCheckOutTimer()
 //-----------------------------------------------------------------------------
 void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGrep::LinkedTask* node)
 {
+  (void)node;
   if (nullptr == rootNode)
     return;
 

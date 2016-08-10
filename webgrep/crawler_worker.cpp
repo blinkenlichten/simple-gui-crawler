@@ -232,7 +232,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx w)
     std::cerr << ex.what() << std::endl;
     if (w.onException)
       {
-        w.onException(task, w, ex.what());
+        w.onException(ex.what());
       }
   }
 
@@ -249,7 +249,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx w)
 bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx w)
 {
   //case stopped by force:
-  if (nullptr == task->linksCounterPtr || !w.running)
+  if (nullptr == task->linksCounterPtr)
     { return false; }
 
   size_t link_cnt = task->linksCounterPtr->load(std::memory_order_acquire);
@@ -263,14 +263,14 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx w)
   //download one page:
   GrepVars& g(task->grepVars);
   //download and grep page for (text and URLs):
-  if(!FuncGrepOne(task, w));
-  {//re-shedule current task
-
+  if (!FuncGrepOne(task, w))
+  {
+    return false;
   }
 
   if (g.matchURLVector.empty())
     {
-      //no URLS then no subtree items.
+      //no URLS then no subtree items. but we're okay.
       return true;
     }
   LinkedTask* old = nullptr;
@@ -286,11 +286,17 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx w)
     }
 
   std::cerr << __FUNCTION__ << " scheduling " << n_subtasks << " tasks more.\n";
+  LonelyTask sheep;
+  sheep.root = w.rootNode;
+  sheep.ctx = w;
+  sheep.action = &FuncDownloadGrepRecursive;
+
   WebGrep::ForEachOnBranch(child,
-                           [w](LinkedTask* _node, void*)
+                           [&sheep](LinkedTask* _node, void*)
   {
     //for node of subtree: schedule this task again to parse them too
-    w.sheduleTask([_node, w](){ FuncDownloadGrepRecursive(_node, w);});
+    sheep.target = _node;
+    sheep.ctx.sheduleTask(&sheep);
   },
   true/*including head*/);
 
@@ -298,5 +304,9 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx w)
 }
 
 //---------------------------------------------------------------
+LonelyTask::LonelyTask() : target(nullptr), action(nullptr), additional(nullptr)
+{
+
+}
 
 }//WebGrep

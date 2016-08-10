@@ -6,6 +6,7 @@
 namespace WebGrep {
 
 class LinkedTask;
+class CrawlerPV;
 
 //----
 /** The crawler: download first HTML page, grep http:// or href=
@@ -22,11 +23,11 @@ public:
 
   static const unsigned maxThreads = 32;
 
-  //set threads number, not lesst than 1
-  //start() is needed to continue where we've stopped on setThreadsNumber()
+  /** set threads number, not less than 1.
+   *  Will be apply immediately and start new threads or kill some old threads. */
   void setThreadsNumber(unsigned nthreads = 1);
 
-  //set links count before start()
+  /** set links count any time. */
   void setMaxLinks(unsigned maxScanLinks = 4096);
 
   /** Start recursive scanning of the URLs from given page
@@ -54,8 +55,8 @@ public:
 
   void setExceptionCB(OnExceptionCallback_t func);
   void setPageScannedCB(OnPageScannedCallback_t func);
+
 private:
-  class CrawlerPV;
   std::shared_ptr<CrawlerPV> pv;
 };
 

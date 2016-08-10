@@ -18,6 +18,7 @@
 namespace WebGrep {
 
 struct LonelyTask;
+typedef std::function<void()> CallableFunc_t;
 
 //---------------------------------------------------------------
 /** The structure must be copyable in such manner that
@@ -36,10 +37,12 @@ struct WorkerCtx
   WebGrep::Client httpClient;
   std::string hostPort;
 
+  std::shared_ptr<LinkedTask> rootNode;
+
   /** An array of expression to grep URLs from the web pages.*/
   std::vector<boost::regex> urlGrepExpressions;
 
-  std::function<void(LinkedTask*, WorkerCtx, const std::string& )> onException;
+  std::function<void(const std::string& )> onException;
 
   //the tasks can schedule subtasks
   typedef std::function<void()> CallableFunc_t;
@@ -63,10 +66,18 @@ struct WorkerCtx
   std::function<void(LinkedTask*)> childLevelSpawned;
 
 
-  std::shared_ptr<volatile bool> running;//< used for subtask spawn pausing
-
 };
 //---------------------------------------------------------------
+struct LonelyTask
+{
+  LonelyTask();
+
+  std::shared_ptr<LinkedTask> root;
+  LinkedTask* target;
+  bool (*action)(LinkedTask*, WorkerCtx);
+  WorkerCtx ctx;
+  void* additional;//caller cares
+};
 
 //---------------------------------------------------------------
 /** Downloads the page content and stores it in (GrepVars)task->grepVars
