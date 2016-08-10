@@ -40,7 +40,7 @@ int AcceptAllSSL(void*, int, const ne_ssl_certificate*)
 std::string Client::connect(const std::string& httpURL)
 {
   std::string scheme = httpURL.substr(0, httpURL.find_first_of("://"));
-  if (scheme.size() < 5)
+  if (scheme.size() < 4)
     return std::string();
 
   for(unsigned c = 0; c < 5; ++c)
@@ -70,8 +70,11 @@ std::string Client::connect(const std::string& httpURL)
     }
   ctx->sess = ne;
   ne_set_useragent(ctx->sess, "libneon");
-  ne_ssl_trust_default_ca(ne);
-  ne_ssl_set_verify(ne, &AcceptAllSSL, nullptr);
+  if ("https" == scheme)
+    {
+      ne_ssl_trust_default_ca(ne);
+      ne_ssl_set_verify(ne, &AcceptAllSSL, nullptr);
+    }
   return ctx->host_and_port;
 }
 

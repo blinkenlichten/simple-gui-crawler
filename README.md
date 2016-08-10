@@ -31,10 +31,19 @@ Or install it from Linux package system and modify .pro file to use shared libra
 The algorithm is working with minimal use of mutex locking, it needs testing.
 
 # Ideas
-Internally I'm using tree linked list with atomic pointers to be able to read the list
-while it's being processed and appended concurrently (but only with 1 thread).
-So, we have 1 producer -> multiple readers here, the readers do not dispose items,
-it is managed by a syncronized task or destructor of higher level entities.
+The program contains not a single explicitly defined mutex or spinlock,
+we're syncronizing the tasks either using RAII ownership passing,
+volatile bool flags and or higher
+level task management entities: boost::base_threadpool (waits on condition),
+Qt5 events loop in main thread (same thing).
+They're using mutex lock + condition wait and it's just fine.
+All other entities do not block when resources have to be passed between threads,
+they pass things encapsulated in std::shared_ptr or other data structures.
+
+Internally to track the tasks I'm using tree linked list with atomic pointers to be able to read the list
+while it's being processed and appended concurrently (but only with 1 thread as producer).
+So, we have 1 producer -> multiple readers here, the readers do not dispose items explicitly,
+it is managed by a shared pointers.
 
 ```
 //from file webgrep/linked_task.h

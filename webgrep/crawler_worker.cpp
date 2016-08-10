@@ -59,7 +59,7 @@ bool CheckExtension(const char* buf, unsigned len)
       canHazDot = canHazDot || ('.' == last4[z]);
     }
   //otherwise
-  return !canHazDot && ('/' == buf[0] || '/' == buf[len - 1]);
+  return !canHazDot && (0 == memcmp(buf, "http", 4) || ('/' == buf[0] || '/' == buf[len - 1]));
 }
 //---------------------------------------------------------------
 void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
