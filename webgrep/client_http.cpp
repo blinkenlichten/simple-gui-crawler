@@ -85,9 +85,12 @@ static int httpResponseReader(void* userdata, const char* buf, size_t len)
   return 0;
 }
 
-Client::IssuedRequest Client::issueRequest(const char* method, const char* path)
+Client::IssuedRequest Client::issueRequest(const char* method, const char* path, bool withLock)
 {
-  std::lock_guard<boost::detail::spinlock> lk(ctx->slock);
+  std::shared_ptr<std::lock_guard<std::mutex>> lk;
+  if (withLock) {
+      lk = std::make_shared<std::lock_guard<std::mutex>>(ctx->mu);
+    }
   ctx->response.clear();
   auto rq = ne_request_create(ctx->sess, method, path);
   ne_add_response_body_reader(rq, ne_accept_always, httpResponseReader, (void*)ctx.get());

@@ -70,8 +70,8 @@ public:
 
   //---- these variables track for abandoned tasks that are to be re-issued:
   // these provide sync. access to lonelyVector, lonelyFunctorsVector
-  typedef boost::detail::spinlock LonelyLock_t;
-  boost::detail::spinlock slockLonely, slockLonelyFunctors;
+  typedef std::mutex LonelyLock_t;
+  LonelyLock_t slockLonely, slockLonelyFunctors;
 
   //these are keeping abandoned tasks that should be resheduled
   std::vector<WebGrep::LonelyTask> lonelyVector;

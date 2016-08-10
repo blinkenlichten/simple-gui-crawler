@@ -3,7 +3,7 @@
 
 #include <string>
 #include <memory>
-#include "boost/smart_ptr/detail/spinlock.hpp"
+#include <mutex>
 #include "boost/noncopyable.hpp"
 
 extern "C" {
@@ -41,8 +41,9 @@ public:
    * @return extracted host and port string or empty on fail.*/
   std::string connect(const std::string& httpURL);
 
-  //thread-safe via spinlock locking
-  IssuedRequest issueRequest(const char* method, const char* path);
+  //can be used concurrentthread-safe locking(default is not)
+  IssuedRequest issueRequest(const char* method, const char* path,
+                             bool withLock = false);
 
 protected:
   std::shared_ptr<ClientCtx> ctx;//not null when connected
@@ -63,7 +64,7 @@ public:
   ne_session* sess;
   std::string response;
   std::string host_and_port;
-  boost::detail::spinlock slock;//locked in issueRequest()
+  std::mutex mu;//locked in issueRequest()
 };
 //-----------------------------------------------------------------------------
 
