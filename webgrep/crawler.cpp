@@ -90,6 +90,7 @@ bool Crawler::start(const std::string& url,
           sheep.action = &FuncDownloadGrepRecursive;
           sheep.target = node;
           sheep.ctx = std::move(crawlerImpl->makeWorkerContext());
+          sheep.root = sheep.ctx.rootNode;
 
           crawlerImpl->sheduleTask(sheep);
       }, false/*skip root*/);

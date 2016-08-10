@@ -65,8 +65,6 @@ WorkerCtx CrawlerPV::makeWorkerContext()
 //---------------------------------------------------------------
 void CrawlerPV::sheduleTask(const WebGrep::LonelyTask& task)
 {
-  if(task.root.get() != taskRoot.get())
-    return;
   if (workersPool->closed())
     {//shedule abandoned task to a vector while we're managing threads:
       std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonely); (void)lk;
@@ -74,13 +72,19 @@ void CrawlerPV::sheduleTask(const WebGrep::LonelyTask& task)
       return;
     }
   //submit current task:
-  workersPool->submit([task](){ task.action(task.target, task.ctx); });
+  workersPool->submit([task](){
+      WorkerCtx ctx_copy = task.ctx;
+      task.action(task.target, ctx_copy);
+    });
 
   //pull out and submit previously abandoned tasks:
   std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonely); (void)lk;
   for(const LonelyTask& alone : lonelyVector)
     {
-      workersPool->submit([alone](){ alone.action(alone.target, alone.ctx); });
+      workersPool->submit([alone](){
+          LonelyTask sheep = alone;
+          sheep.action(sheep.target, sheep.ctx);
+        });
     }
   lonelyVector.clear();
 }

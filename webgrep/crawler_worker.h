@@ -23,6 +23,10 @@ typedef std::function<void()> CallableFunc_t;
 //---------------------------------------------------------------
 /** The structure must be copyable in such manner that
  * the original and copied resources can be used concurrently in different threads.
+ * It is intended for use as temporary storage that has callback functors,
+ * callback functors contain ref. counted pointers to some external entities,
+ * so triggering them will make some changes, modification of WorkerCtx
+ * will not go out of scope { } where it is operated on.
 */
 struct WorkerCtx
 {
@@ -32,10 +36,12 @@ struct WorkerCtx
     urlGrepExpressions.push_back(boost::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"/([_A-Za-z0-9]*)/\"",
                                 boost::regex::normal | boost::regbase::icase));
     urlGrepExpressions.push_back(boost::regex("(http|https)://[a-zA-Z0-9./?=_-]*"));
+    scheme.fill(0);
   }
 
   WebGrep::Client httpClient;
-  std::string hostPort;
+  std::array<char, 6> scheme;// must be "http\0\0" or "https\0"
+  std::string hostPort; // site.com:443
 
   std::shared_ptr<LinkedTask> rootNode;
 
@@ -74,7 +80,7 @@ struct LonelyTask
 
   std::shared_ptr<LinkedTask> root;
   LinkedTask* target;
-  bool (*action)(LinkedTask*, WorkerCtx);
+  bool (*action)(LinkedTask*, WorkerCtx&);
   WorkerCtx ctx;
   void* additional;//caller cares
 };
@@ -84,7 +90,7 @@ struct LonelyTask
  *  variable, (volatile bool)task->grepVars.pageIsReady will be set to TRUE
  *  on successfull download; the page content will be stored in task->grepVars.pageContent
 */
-bool FuncDownloadOne(LinkedTask* task, WorkerCtx w);
+bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w);
 
 /** Calls FuncDownloadOne(task, w) if FALSE == (volatile bool)task->grepVars.pageIsReady,
  *  then if the download is successfull it'll grep the http:// and href= links from the page,
@@ -93,7 +99,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx w);
  *  where each pair of const iterators points to the begin and the end of matched strings
  *  in task->grepVars.pageContent, the iterators are valid until grepVars.pageContent exists.
 */
-bool FuncGrepOne(LinkedTask* task, WorkerCtx w);
+bool FuncGrepOne(LinkedTask* task, WorkerCtx& w);
 
 /** Call FuncDownloadOne(task,w) multiple times: once for each new http:// URL
  *  in a page's content. It won't use recursion, but will utilize appropriate
@@ -105,7 +111,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx w);
  *  appearance of each subtask is caused by finding a URL that we can grep
  *  until counter's limit is reached.
 */
-bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx w);
+bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w);
 //---------------------------------------------------------------
 
 

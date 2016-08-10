@@ -26,6 +26,7 @@ Client::Client()
 {
   static std::once_flag flag;
   std::call_once(flag, [](){ ne_sock_init(); });
+  scheme.fill(0x00);
 }
 
 Client::~Client()
@@ -39,17 +40,17 @@ int AcceptAllSSL(void*, int, const ne_ssl_certificate*)
 
 std::string Client::connect(const std::string& httpURL)
 {
-  std::string scheme = httpURL.substr(0, httpURL.find_first_of("://"));
-  if (scheme.size() < 4)
+  auto colpos = httpURL.find_first_of("://");
+  if (colpos < 4 || colpos > 5)
     return std::string();
+  ::memcpy(scheme.data(), httpURL.data(), colpos);
 
   for(unsigned c = 0; c < 5; ++c)
     scheme[c] = std::tolower(scheme[c]);
 
-
   ctx = std::make_shared<ClientCtx>();
   ctx->host_and_port = ExtractHostPortHttp(httpURL);
-  int port = (scheme == "http")? 80 : 443;
+  int port = (0 == ::memcmp(scheme.data(), "https", 5)) ? 443 : 80;
   ne_session* ne = nullptr;
   auto pos = ctx->host_and_port.find_first_of(':');
   if (std::string::npos != pos)
@@ -70,7 +71,7 @@ std::string Client::connect(const std::string& httpURL)
     }
   ctx->sess = ne;
   ne_set_useragent(ctx->sess, "libneon");
-  if ("https" == scheme)
+  if (0 == ::memcmp(scheme.data(), "https", 5))
     {
       ne_ssl_trust_default_ca(ne);
       ne_ssl_set_verify(ne, &AcceptAllSSL, nullptr);

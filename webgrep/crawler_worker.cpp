@@ -105,14 +105,18 @@ void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
 }
 //---------------------------------------------------------------
 
-bool FuncDownloadOne(LinkedTask* task, WorkerCtx w)
+bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
 {
   GrepVars& g(task->grepVars);
   std::string& url(g.targetUrl);
+  //try to connect, w.hostPort will be set on success to "site.com:443"
   w.hostPort = w.httpClient.connect(url);
+  ::memcpy(w.scheme.data(), w.httpClient.scheme.data(), w.scheme.size());
+  ::memcpy(g.scheme.data(), w.scheme.data(), g.scheme.size());
   if(w.hostPort.empty())
     return false;
 
+  //issue GET request
   Client::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
   int result = ne_request_dispatch(rq.req.get());
   std::cerr << ne_get_error(rq.ctx->sess);
@@ -147,7 +151,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx w)
   return true;
 }
 //---------------------------------------------------------------
-bool FuncGrepOne(LinkedTask* task, WorkerCtx w)
+bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
 {
   GrepVars& g(task->grepVars);
   g.pageIsParsed = false;
@@ -246,7 +250,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx w)
   return g.pageIsReady && g.pageIsParsed;
 }
 //---------------------------------------------------------------
-bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx w)
+bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w)
 {
   //case stopped by force:
   if (nullptr == task->linksCounterPtr)

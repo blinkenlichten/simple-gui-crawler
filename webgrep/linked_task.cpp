@@ -158,23 +158,23 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
     turl.assign(targetVariables.matchURLVector[cposition].first,
                 targetVariables.matchURLVector[cposition].second);
     auto httpPos = turl.find_first_of("http");
-    if (std::string::npos != httpPos)
-      {
+    if (std::string::npos != httpPos && '/' != turl[0])
+      {//neither of http:// or "/resource" link types
         return;
       }
     //deal with local href links: href=/resource.html or leave if href="http://.."
     //grab http:// or https://
     auto nodeParent = ItemLoadAcquire(node->parent);
-    if (nullptr == nodeParent)
-      //case it's the root node:
-      nodeParent = this;
+    if (nullptr == nodeParent) {
+        //case it's the root node:
+        nodeParent = this;
+      }
 
-    std::string localLink = nodeParent->grepVars.targetUrl.substr(0, 3 + grepVars.targetUrl.find_first_of("://"));
+    std::string localLink = targetVariables.scheme.data(); //"http" or "https"
+    localLink += "://";
     // append site.com:443
     localLink += host_and_port;
     // append local resource URI
-    if ('/' != turl[0])
-      localLink += "/";
     localLink += turl;
     turl = localLink;
     ++cposition;

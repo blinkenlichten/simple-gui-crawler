@@ -17,9 +17,13 @@ class WorkerCtx;
 struct GrepVars
 {
   GrepVars() : responseCode(0), pageIsReady(false), pageIsParsed(false)
-  { }
+  {
+    scheme.fill(0);
+  }
 
+  std::array<char, 6> scheme;// must be set to "http\0\0" or "https\0"
   std::string targetUrl;
+
   boost::regex grepExpr;  //< regexp to be matched
   int responseCode;       //< last HTTP GET response code
 

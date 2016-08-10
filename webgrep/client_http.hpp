@@ -45,6 +45,7 @@ public:
   IssuedRequest issueRequest(const char* method, const char* path,
                              bool withLock = false);
 
+  std::array<char, 6> scheme;// "http\0\0" or "https\0"
 protected:
   std::shared_ptr<ClientCtx> ctx;//not null when connected
 };
