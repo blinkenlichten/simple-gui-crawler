@@ -31,15 +31,25 @@ Or install it from Linux package system and modify .pro file to use shared libra
 The algorithm is working with minimal use of mutex locking, it needs testing.
 
 # Ideas
-The program contains not a single explicitly defined mutex or spinlock,
+The program has reduced to minimum use of explicitly defined sync. variables: mutexex or spinlocks,
 we're syncronizing the tasks either using RAII ownership passing,
 volatile bool flags and or higher
 level task management entities: boost::base_threadpool (waits on condition),
 Qt5 events loop in main thread (same thing).
 They're using mutex lock + condition wait and it's just fine.
 All other entities do not block when resources have to be passed between threads,
-they pass things encapsulated in std::shared_ptr or other data structures.
+they pass things encapsulated in std::shared_ptr and functors.
 
+I know the drawbacks of using functors everywhere(too much context switching),
+but at least I'm not writing this stuff in JavaScript/PHP with consequent asking of the
+employer to buy new mega-computer-server-dozer2000 to make that shit work :-D
+
+## Regular expressions
+To extract http:// I'm using boost::regex (C++11 has std::regex with same templated API).
+The set of expressions is defined in "webgrep/crawler_worker.h" in the class WorkerCtx constructor.
+The program also greps the web page to find some text if the user has provided it in 2nd input field of he GUI.
+
+## Linked list with atomic pointers
 Internally to track the tasks I'm using tree linked list with atomic pointers to be able to read the list
 while it's being processed and appended concurrently (but only with 1 thread as producer).
 So, we have 1 producer -> multiple readers here, the readers do not dispose items explicitly,

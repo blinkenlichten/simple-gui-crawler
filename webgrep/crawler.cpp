@@ -41,7 +41,8 @@ public:
       std::cerr << " FAILED with exception: "
                << ex.what() << "\n";
     }
-
+    lonelyVector.reserve(2 * Crawler::maxThreads);
+    lonelyFunctorsVector.reserve(2 * Crawler::maxThreads);
   }
 
   virtual ~CrawlerPV()
@@ -79,10 +80,7 @@ public:
 
   void stop()
   {
-    for(WorkerCtx& ctx : jobContextArray)
-      {
-        ctx.running = false;
-      }
+
   }
 
   Crawler::OnExceptionCallback_t onException;
@@ -98,6 +96,13 @@ public:
 
   //these shared by all tasks spawned by the object CrawlerPV:
   std::shared_ptr<std::atomic_uint> maxLinksCount, currentLinksCount;
+
+  //---- these variables track for abandoned tasks that are to be re-issued:
+  // these provide sync. access to lonelyVector, lonelyFunctorsVector
+  typedef boost::detail::spinlock LonelyLock_t;
+  boost::detail::spinlock slockLonely, slockLonelyFunctors;
+  std::vector<WebGrep::LonelyTask> lonelyVector;
+  std::vector<WebGrep::WorkerCtx::CallableFunc_t> lonelyFunctorsVector;
 };
 //---------------------------------------------------------------
 void Crawler::setExceptionCB(OnExceptionCallback_t func)
@@ -124,6 +129,54 @@ bool Crawler::start(const std::string& url,
                     const std::string& grepRegex,
                     unsigned maxLinks, unsigned threadsNum)
 {
+  //----------------------------------------------------------------
+  // These functors are set in a way that binds them to reference-counted
+  // private implementation object that can be swapped.
+  // Purpose: to be able to join the threads in a detached thread,
+  // we don't need any delays in the main loop.
+  //----------------------------------------------------------------
+  auto crawlerImpl = pv;
+  //this functor serves as sheduling method for objects LonelyTask (Task pointers basically)
+  auto shedulingTask = [crawlerImpl](WebGrep::LonelyTask task)
+  {
+    if(task.root.get() != crawlerImpl->taskRoot.get())
+      return;
+    if (crawlerImpl->workersPool->closed())
+      {//shedule abandoned task to a vector while we're managing threads:
+        std::lock_guard<CrawlerPV::LonelyLock_t> lk(crawlerImpl->slockLonely); (void)lk;
+        crawlerImpl->lonelyVector.push_back(task);
+        return;
+      }
+    //normal sheduling way:
+    crawlerImpl->workersPool->submit([task](){ task.action(task.sheduledTask, task.ctx); });
+
+    //pull out and submit previously abandoned tasks:
+    std::lock_guard<CrawlerPV::LonelyLock_t> lk(crawlerImpl->slockLonely); (void)lk;
+    for(const LonelyTask& alone : crawlerImpl->lonelyVector)
+      {
+        crawlerImpl->workersPool->submit([alone](){ alone.action(alone.sheduledTask, alone.ctx); });
+      }
+    crawlerImpl->lonelyVector.clear();
+  };
+  //----------------------------------------------------------------
+  //this functor services as sheduling method for callable function objects
+  auto shedulingFunctor = [crawlerImpl](WorkerCtx::CallableFunc_t func)
+  {
+    if (crawlerImpl->workersPool->closed())
+      {
+        std::lock_guard<CrawlerPV::LonelyLock_t> lk(crawlerImpl->slockLonelyFunctors); (void)lk;
+        crawlerImpl->lonelyFunctorsVector.push_back(func);
+        return;
+      }
+    crawlerImpl->workersPool->submit(func);
+    std::lock_guard<CrawlerPV::LonelyLock_t> lk(crawlerImpl->slockLonelyFunctors); (void)lk;
+    for(WorkerCtx::CallableFunc_t&& func : crawlerImpl->lonelyFunctorsVector)
+      {
+        crawlerImpl->workersPool->submit(std::move(func));
+      }
+    crawlerImpl->lonelyFunctorsVector.clear();
+  };
+  //----------------------------------------------------------------
 
   std::shared_ptr<LinkedTask>& root(pv->taskRoot);
 
@@ -146,21 +199,19 @@ bool Crawler::start(const std::string& url,
     GrepVars* g = &(root->grepVars);
     g->targetUrl = url;
     g->grepExpr = grepRegex;
-    auto pv_copy = pv;
-    for(WorkerCtx& ctx : pv->jobContextArray)
-      {//enable workers to spawn subtasks e.g. "start"
-        ctx.pageMatchFinishedCb  = [pv_copy](LinkedTask* node)
-        {
-          if (pv_copy)
-            pv_copy->onPageScanned(pv_copy->taskRoot, node);
-        };
-        ctx.childLevelSpawned =  [pv_copy](LinkedTask* node)
-        {
-          if (pv_copy)
-            pv_copy->onPageScanned(pv_copy->taskRoot, node);
-        };
 
-        ctx.running = true;
+    //----------------------------------------------------------------
+    //set the callbacks that will be used by the tasks
+    for(WorkerCtx& ctx : pv->jobContextArray)
+      {
+        //enable workers to spawn subtasks e.g. "start"
+        ctx.pageMatchFinishedCb  = [crawlerImpl](LinkedTask* node)
+        {
+          if (crawlerImpl->onPageScanned)
+            crawlerImpl->onPageScanned(crawlerImpl->taskRoot, node);
+        };
+        ctx.sheduleTask = shedulingTask;
+        ctx.sheduleFunctor = shedulingFunctor;
       }
   } catch(std::exception& e)
   {
@@ -177,7 +228,7 @@ bool Crawler::start(const std::string& url,
   auto fn = [this, worker]() {
       WebGrep::LinkedTask* root = pv->taskRoot.get();
       //this functor will wake-up pending task from another thread
-      FuncGrepOne(root, worker);
+      FuncGrepOne(root, *worker);
       size_t spawnedCnt = root->spawnGreppedSubtasks(worker->hostPort, root->grepVars);
       std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
 
@@ -190,7 +241,7 @@ bool Crawler::start(const std::string& url,
           //submit recursive grep for each 1-st level subtask to different workers:
           auto ctx = pv->jobContextArray.data() + (item++ % pv->jobContextArray.size());
           pv->workersPool->submit([node, ctx]
-                                  (){ FuncDownloadGrepRecursive(node, ctx); });
+                                  (){ FuncDownloadGrepRecursive(node, /*copy WorkerCtx*/*ctx); });
       }, false/*skip root*/);
     };
   try {
@@ -226,8 +277,6 @@ void Crawler::setThreadsNumber(unsigned nthreads)
   try {
     pv->stopThreads();
     pv->workersPool.reset(new boost::basic_thread_pool(nthreads));
-    for(WorkerCtx& ctx : pv->jobContextArray)
-      { ctx.running = pv->jobContextArray[0].running; }
 
   } catch(const std::exception& ex)
   {

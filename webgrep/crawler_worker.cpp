@@ -105,15 +105,15 @@ void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
 }
 //---------------------------------------------------------------
 
-bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
+bool FuncDownloadOne(LinkedTask* task, WorkerCtx w)
 {
   GrepVars& g(task->grepVars);
   std::string& url(g.targetUrl);
-  w->hostPort = w->httpClient.connect(url);
-  if(w->hostPort.empty())
+  w.hostPort = w.httpClient.connect(url);
+  if(w.hostPort.empty())
     return false;
 
-  Client::IssuedRequest rq = w->httpClient.issueRequest("GET", "/");
+  Client::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
   int result = ne_request_dispatch(rq.req.get());
   std::cerr << ne_get_error(rq.ctx->sess);
   if (NE_OK != result)
@@ -147,7 +147,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtxPtr w)
   return true;
 }
 //---------------------------------------------------------------
-bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
+bool FuncGrepOne(LinkedTask* task, WorkerCtx w)
 {
   GrepVars& g(task->grepVars);
   g.pageIsParsed = false;
@@ -178,15 +178,13 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
     bool gotText = boost::regex_search(g.pageContent, matchedText, g.grepExpr);
 
     //grep the http:// URLs and spawn new nodes:
-    boost::smatch matchURL, matchURL2;
-
-    //match href="URL"
-    if(boost::regex_search(g.pageContent, matchURL, w->hrefGrepExpr)) {
-        PostProcHrefLinks(matches, matchURL, g);
-      }
-
-    if(boost::regex_search(g.pageContent, matchURL2, w->hrefGrepExpr2)) {
-        PostProcHrefLinks(matches, matchURL2, g);
+    for(boost::regex& regexp : w.urlGrepExpressions)
+      {
+        boost::smatch matchURL;
+        if(boost::regex_search(g.pageContent, matchURL, regexp))
+          {
+            PostProcHrefLinks(matches, matchURL, g);
+          }
       }
     //---------------------------------------------------------------
     //put all together:
@@ -232,42 +230,43 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtxPtr w)
   catch(const std::exception& ex)
   {
     std::cerr << ex.what() << std::endl;
-    if (w->onException)
+    if (w.onException)
       {
-        w->onException(task, w, ex.what());
+        w.onException(task, w, ex.what());
       }
   }
 
   task->linksCounterPtr->fetch_add(g.matchURLVector.size());
 
   g.pageIsParsed = true;
-  if (w->pageMatchFinishedCb)
+  if (w.pageMatchFinishedCb)
     {
-      w->pageMatchFinishedCb(task);
+      w.pageMatchFinishedCb(task);
     }
   return g.pageIsReady && g.pageIsParsed;
 }
 //---------------------------------------------------------------
-bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
+bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx w)
 {
   //case stopped by force:
-  if (nullptr == task->linksCounterPtr || !w->running)
+  if (nullptr == task->linksCounterPtr || !w.running)
     { return false; }
 
   size_t link_cnt = task->linksCounterPtr->load(std::memory_order_acquire);
   if (link_cnt >= task->maxLinksCountPtr->load(std::memory_order_acquire))
     {//max. links reached, lets stop the parsing
-      if (w->onMaximumLinksCount) {
-          w->onMaximumLinksCount(task);
+      if (w.onMaximumLinksCount) {
+          w.onMaximumLinksCount(task);
         }
       return true;
     }
   //download one page:
   GrepVars& g(task->grepVars);
   //download and grep page for (text and URLs):
-  FuncGrepOne(task, w);
-  if (!g.pageIsParsed)
-    return false;
+  if(!FuncGrepOne(task, w));
+  {//re-shedule current task
+
+  }
 
   if (g.matchURLVector.empty())
     {
@@ -278,12 +277,12 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
   LinkedTask* child = task->spawnChildNode(old); DeleteList(old);
 
   //create next level linked list from grepped URLS:
-  size_t n_subtasks = child->spawnGreppedSubtasks(w->hostPort, task->grepVars);
+  size_t n_subtasks = child->spawnGreppedSubtasks(w.hostPort, task->grepVars);
 
   //emit signal that we've spawned a new level:
-  if (0 != n_subtasks && nullptr != w->childLevelSpawned)
+  if (0 != n_subtasks && nullptr != w.childLevelSpawned)
     {
-      w->childLevelSpawned(child);
+      w.childLevelSpawned(child);
     }
 
   std::cerr << __FUNCTION__ << " scheduling " << n_subtasks << " tasks more.\n";
@@ -291,7 +290,7 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtxPtr w)
                            [w](LinkedTask* _node, void*)
   {
     //for node of subtree: schedule this task again to parse them too
-    w->sheduleTask([_node, w](){ FuncDownloadGrepRecursive(_node, w);});
+    w.sheduleTask([_node, w](){ FuncDownloadGrepRecursive(_node, w);});
   },
   true/*including head*/);
 

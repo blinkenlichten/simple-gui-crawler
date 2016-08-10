@@ -36,10 +36,12 @@ public:
   Client();
   virtual ~Client();
 
-  /** Connect to a host, use issueRequest() when connected
+  /** Connect to a host, use issueRequest() when connected.
+   * Thread-safe: shared_ptr<ClientCtx> is constructed on each connect.
    * @return extracted host and port string or empty on fail.*/
   std::string connect(const std::string& httpURL);
 
+  //thread-safe via spinlock locking
   IssuedRequest issueRequest(const char* method, const char* path);
 
 protected:
@@ -51,7 +53,7 @@ class ClientCtx : public boost::noncopyable
 {
 public:
   ClientCtx() : sess(nullptr) {
-    response.reserve(512 * 1024);//512 kb
+
   }
   ~ClientCtx()
   {
@@ -61,6 +63,7 @@ public:
   ne_session* sess;
   std::string response;
   std::string host_and_port;
+  boost::detail::spinlock slock;//locked in issueRequest()
 };
 //-----------------------------------------------------------------------------
 

@@ -87,6 +87,7 @@ static int httpResponseReader(void* userdata, const char* buf, size_t len)
 
 Client::IssuedRequest Client::issueRequest(const char* method, const char* path)
 {
+  std::lock_guard<boost::detail::spinlock> lk(ctx->slock);
   ctx->response.clear();
   auto rq = ne_request_create(ctx->sess, method, path);
   ne_add_response_body_reader(rq, ne_accept_always, httpResponseReader, (void*)ctx.get());
