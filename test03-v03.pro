@@ -5,6 +5,7 @@
 #-------------------------------------------------
 
 QT       += core gui
+CONFIG += debug
 CCFLAG += -std=c++11
 win32 {
 QT += network
@@ -22,7 +23,7 @@ SOURCES += main.cpp\
     webgrep/crawler_worker.cpp \
     webgrep/linked_task.cpp \
     link_status_widget.cpp \
-    webgrep/crawler_private.cpp
+    webgrep/crawler_private.cpp \
 
 HEADERS  += widget.h webgrep/client_http.hpp \
     webgrep/crawler.h \
@@ -30,7 +31,16 @@ HEADERS  += widget.h webgrep/client_http.hpp \
     webgrep/linked_task.h \
     link_status_widget.h \
     webgrep/crawler_private.h \
-    webgrep/noncopyable.hpp
+    webgrep/noncopyable.hpp \
+
+unix {
+    SOURCES += webgrep/ch_ctx_nix.cpp
+    HEADERS += webgrep/ch_ctx_nix.h
+}
+win32 {
+    SOURCES += webgrep/ch_ctx_win32.cpp
+    HEADERS += webgrep/ch_ctx_win32.h
+}
 
 FORMS    += widget.ui
 
@@ -55,6 +65,9 @@ $$libpath/libboost_container$$endian \
 $$libpath/libboost_context$$endian \
 $$libpath/libboost_thread$$endian \
 $$libpath/libboost_atomic$$endian \
+$$libpath/libgdi32.a $$libpath/libws2_32.a  $$libpath/libkernel32.a \
+$$libpath/libwsock32.a
+
 #$$libpath/libssl.a \
 #$$libpath/libneon.a \
 #$$libpath/libgnutls.dll.a $$libpath/libcrypto.a \

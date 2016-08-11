@@ -23,10 +23,6 @@ std::string ExtractHostPortHttp(const std::string& targetUrl)
   return url;
 }
 //-----------------------------------------------------------------
-bool ClientCtx::isHttps() const
-{
-  return (0 == ::memcmp(scheme.data(), "https", 5));
-}
 //-----------------------------------------------------------------
 const char* Client::scheme() const
 {
@@ -45,9 +41,6 @@ Client::Client()
   std::call_once(flag, [](){ ne_sock_init(); });
 }
 
-Client::~Client()
-{
-}
 int AcceptAllSSL(void*, int, const ne_ssl_certificate*)
 {
   return 0;//always acceptable
@@ -102,7 +95,7 @@ static int httpResponseReader(void* userdata, const char* buf, size_t len)
   return 0;
 }
 
-Client::IssuedRequest Client::issueRequest(const char* method, const char* path, bool withLock)
+WebGrep::IssuedRequest Client::issueRequest(const char* method, const char* path, bool withLock)
 {
   std::shared_ptr<std::lock_guard<std::mutex>> lk;
   if (withLock) {
@@ -111,43 +104,17 @@ Client::IssuedRequest Client::issueRequest(const char* method, const char* path,
   ctx->response.clear();
   auto rq = ne_request_create(ctx->sess, method, path);
   ne_add_response_body_reader(rq, ne_accept_always, httpResponseReader, (void*)ctx.get());
-  Client::IssuedRequest out;
+  IssuedRequest out;
   out.ctx = ctx;
   out.req = std::shared_ptr<ne_request>(rq, [out](ne_request* ptr){ne_request_destroy(ptr);} );
   return out;
 }
 #else //case _WIN32
 //-----------------------------------------------------------------
-ClientCtx::ClientCtx(QObject* p) : QObject(p)
-{
-  mgr = new QNetworkAccessManager(this);
-  QObject::connect(mgr, SIGNAL(finished(QNetworkReply*)),
-                   this, SLOT(replyFinished(QNetworkReply*)), Qt::DirectConnection);
-  port = 0;
-  scheme.fill(0x00);
-}
-//-----------------------------------------------------------------
-void ClientCtx::replyFinished(QNetworkReply* rep)
-{
-  reply.reset(rep);
-  response.resize(std::max(rep->size(),(qint64)0));
-
-  //read out and copy to ctx->response
-  size_t pos = 0;
-  for(qint64 rd = 0; pos < response.size(); pos += rd)
-    {
-      rep->read(&(response[pos]), response.size() - pos);
-      pos += rd;
-    }
-  cond.notify_all();
-}
 //----------------------------------
 Client::Client()
 {
-}
 
-Client::~Client()
-{
 }
 
 std::string Client::connect(const std::string& httpURL)
@@ -180,7 +147,7 @@ std::string Client::connect(const std::string& httpURL)
   return ctx->host_and_port;
 }
 
-Client::IssuedRequest Client::issueRequest(const char* method, const char* path, bool withLock)
+WebGrep::IssuedRequest Client::issueRequest(const char* method, const char* path, bool withLock)
 {
   (void)method;
   std::shared_ptr<std::lock_guard<std::mutex>> lk;
@@ -189,11 +156,12 @@ Client::IssuedRequest Client::issueRequest(const char* method, const char* path,
     }
   ctx->response.clear();
 
-  Client::IssuedRequest out;
+  IssuedRequest out;
   QString url = scheme();
   url += ctx->host_and_port.data();
   url += path;
   out.req.setUrl(url);
+  out.req.setRawHeader("User-Agent", "Qt5GET 1.0");
   out.ctx = ctx;
   return out;
 }

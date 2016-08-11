@@ -118,7 +118,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
 
 #ifndef _WIN32
   //issue GET request
-  Client::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
+  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
   //parse the results
   int result = ne_request_dispatch(rq.req.get());
   std::cerr << ne_get_error(rq.ctx->sess);
@@ -152,13 +152,15 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
 #else//case Windows
   //temporary solution for Windows: not using libneon, but QtNetwork instead
   //issue GET request
-  Client::IssuedRequest issue = w.httpClient.issueRequest("GET", "/");
+  WebGrep::IssuedRequest issue = w.httpClient.issueRequest("GET", "/");
   //the manager will dispatch asyncronously
-  QNetworkReply* rep = issue.ctx->mgr->get(issue.req);
-  rep->ignoreSslErrors();
-  //wait for the reply, notification in Cli
+  std::shared_ptr<QNetworkReply> rep = issue.ctx->makeGet(issue.req);
   std::unique_lock<std::mutex> lk(issue.ctx->mu);
-  issue.ctx->cond.wait_for(lk, std::chrono::seconds(10));
+  if (!rep->isFinished())
+    {
+      //wait for the reply, notification in Cli
+      issue.ctx->cond.wait_for(lk, std::chrono::seconds(5));
+    }
   //ok, got an reply
   g.pageContent = std::move(issue.ctx->response);
   g.pageIsReady = !g.pageContent.empty();
