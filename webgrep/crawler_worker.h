@@ -5,13 +5,10 @@
 #include <functional>
 #include <thread>
 #include <condition_variable>
-#include <boost/lockfree/queue.hpp>
-#include <boost/noncopyable.hpp>
 #include "client_http.hpp"
 #include <atomic>
 #include <array>
-#include "boost/regex.hpp"
-#include "boost/asio/ssl/context.hpp"
+#include "noncopyable.hpp"
 #include "linked_task.h"
 
 
@@ -31,11 +28,9 @@ typedef std::function<void()> CallableFunc_t;
 struct WorkerCtx
 {
   WorkerCtx() {
-    urlGrepExpressions.push_back(boost::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"([^\"]*)\"",
-                                              boost::regex::normal | boost::regbase::icase));
-    urlGrepExpressions.push_back(boost::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"/([_A-Za-z0-9]*)/\"",
-                                boost::regex::normal | boost::regbase::icase));
-    urlGrepExpressions.push_back(boost::regex("(http|https)://[a-zA-Z0-9./?=_-]*"));
+    urlGrepExpressions.push_back(std::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"([^\"]*)\""));
+    urlGrepExpressions.push_back(std::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"/([_A-Za-z0-9]*)/\""));
+    urlGrepExpressions.push_back(std::regex("(http|https)://[a-zA-Z0-9./?=_-]*"));
     scheme.fill(0);
   }
 
@@ -46,7 +41,7 @@ struct WorkerCtx
   std::shared_ptr<LinkedTask> rootNode;
 
   /** An array of expression to grep URLs from the web pages.*/
-  std::vector<boost::regex> urlGrepExpressions;
+  std::vector<std::regex> urlGrepExpressions;
 
   std::function<void(const std::string& )> onException;
 

@@ -110,7 +110,7 @@ void Widget::populateListsFunction(WebGrep::LinkedTask* head, void*)
     }
   else
     {
-      guiTempString.sprintf("url: %s (GET code: %d) (Status:parsed) (Text Matches: %lu) (URL matches: %lu)",
+      guiTempString.sprintf("url: %s (GET code: %d) (Status:parsed) (Text Matches: %u) (URL matches: %u)",
                             g.targetUrl.data(), g.responseCode,
                             g.matchTextVector.size(), g.matchURLVector.size());
 

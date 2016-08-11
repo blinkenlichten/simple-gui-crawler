@@ -1,10 +1,7 @@
 #include "crawler_worker.h"
 
 #include <iostream>
-#include "boost/regex.hpp"
-#include "boost/pool/pool_alloc.hpp"
-#include "boost/asio/ssl/context_base.hpp"
-
+#include <regex>
 namespace WebGrep {
 
 //---------------------------------------------------------------
@@ -63,7 +60,7 @@ bool CheckExtension(const char* buf, unsigned len)
 }
 //---------------------------------------------------------------
 void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
-                       const boost::smatch& matchURL,
+                       const std::smatch& matchURL,
                        GrepVars& g)
 {
   std::string temp;
@@ -110,14 +107,19 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   GrepVars& g(task->grepVars);
   std::string& url(g.targetUrl);
   //try to connect, w.hostPort will be set on success to "site.com:443"
+  g.scheme.fill(0);
+  w.scheme.fill(0);
+
   w.hostPort = w.httpClient.connect(url);
-  ::memcpy(w.scheme.data(), w.httpClient.scheme.data(), w.scheme.size());
+  ::memcpy(w.scheme.data(), w.httpClient.scheme(), ::strlen(w.httpClient.scheme()));
   ::memcpy(g.scheme.data(), w.scheme.data(), g.scheme.size());
   if(w.hostPort.empty())
     return false;
 
+#ifndef _WIN32
   //issue GET request
   Client::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
+  //parse the results
   int result = ne_request_dispatch(rq.req.get());
   std::cerr << ne_get_error(rq.ctx->sess);
   if (NE_OK != result)
@@ -145,10 +147,24 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
 
     default: {return false;};
     };
-
-  g.pageContent = rq.ctx->response;
+  g.pageContent = std::move(rq.ctx->response);
   g.pageIsReady = true;
-  return true;
+#else//case Windows
+  //temporary solution for Windows: not using libneon, but QtNetwork instead
+  //issue GET request
+  Client::IssuedRequest issue = w.httpClient.issueRequest("GET", "/");
+  //the manager will dispatch asyncronously
+  QNetworkReply* rep = issue.ctx->mgr->get(issue.req);
+  rep->ignoreSslErrors();
+  //wait for the reply, notification in Cli
+  std::unique_lock<std::mutex> lk(issue.ctx->mu);
+  issue.ctx->cond.wait_for(lk, std::chrono::seconds(10));
+  //ok, got an reply
+  g.pageContent = std::move(issue.ctx->response);
+  g.pageIsReady = !g.pageContent.empty();
+#endif//_WIN32
+
+  return g.pageIsReady;
 }
 //---------------------------------------------------------------
 bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
@@ -161,11 +177,11 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
   if (!g.pageIsReady || g.pageContent.empty())
     return false;
 
-  /**TODO: figure out how much memory allocations boost::regex or std::regex can
+  /**TODO: figure out how much memory allocations std::regex or std::regex can
    * make while parsing the regular expressions.
    *  Maybe I should use PCRE or similar with C POD containers
    *  and non-singleton pool allocators
-   *  (boost::pool_allocator is a singleton, not good).
+   *  (std::pool_allocator is a singleton, not good).
    *
  **/
 
@@ -178,14 +194,14 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
     g.matchTextVector.clear();
 
     //grep the grepExpr within pageContent:
-    boost::smatch matchedText;
-    bool gotText = boost::regex_search(g.pageContent, matchedText, g.grepExpr);
+    std::smatch matchedText;
+    bool gotText = std::regex_search(g.pageContent, matchedText, g.grepExpr);
 
     //grep the http:// URLs and spawn new nodes:
-    for(boost::regex& regexp : w.urlGrepExpressions)
+    for(std::regex& regexp : w.urlGrepExpressions)
       {
-        boost::smatch matchURL;
-        if(boost::regex_search(g.pageContent, matchURL, regexp))
+        std::smatch matchURL;
+        if(std::regex_search(g.pageContent, matchURL, regexp))
           {
             PostProcHrefLinks(matches, matchURL, g);
           }
@@ -208,14 +224,14 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
         rootNode = task;
 
       const std::string& rootTarget (rootNode->grepVars.targetUrl);
-      static boost::regex matchRoot("(:[0-9]*)/");
+      static std::regex matchRoot("(:[0-9]*)/");
       //push matched URLS
       for(auto iter = matches.begin(); iter != matches.end(); ++iter)
         {
           const std::string& key((*iter).first);
           if (std::string::npos != key.find_first_of(rootTarget)
               && key.size() >= rootTarget.size()
-              && boost::regex_match(key, matchRoot))
+              && std::regex_match(key, matchRoot))
             {
               continue;//skip link to main page
             }

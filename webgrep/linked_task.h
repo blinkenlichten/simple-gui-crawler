@@ -1,8 +1,8 @@
 #ifndef LINKEDTASK_H
 #define LINKEDTASK_H
 #include <string>
-#include "boost/regex.hpp"
-#include "boost/noncopyable.hpp"
+#include <regex>
+#include "noncopyable.hpp"
 #include <atomic>
 
 #include <functional>
@@ -24,7 +24,7 @@ struct GrepVars
   std::array<char, 6> scheme;// must be set to "http\0\0" or "https\0"
   std::string targetUrl;
 
-  boost::regex grepExpr;  //< regexp to be matched
+  std::regex grepExpr;  //< regexp to be matched
   int responseCode;       //< last HTTP GET response code
 
   std::string pageContent;//< html content
@@ -78,7 +78,7 @@ size_t ForEachOnBranch(LinkedTask* head,
  *  Instead of prasing the task again on current item,
  *  better construct new node and move the data there safely.
  */
-class LinkedTask : public boost::noncopyable
+class LinkedTask : public WebGrep::noncopyable
 {
 public:
   LinkedTask();

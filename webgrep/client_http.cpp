@@ -1,5 +1,6 @@
 #include "client_http.hpp"
 #include <mutex>
+#include <chrono>
 #include <array>
 #include <cstring>
 #include <stdio.h>
@@ -21,18 +22,32 @@ std::string ExtractHostPortHttp(const std::string& targetUrl)
     }
   return url;
 }
+//-----------------------------------------------------------------
+bool ClientCtx::isHttps() const
+{
+  return (0 == ::memcmp(scheme.data(), "https", 5));
+}
+//-----------------------------------------------------------------
+const char* Client::scheme() const
+{
+  return (nullptr == ctx)? nullptr : ctx->scheme.data();
+}
 
+uint16_t Client::port() const
+{
+  return (nullptr == ctx)? 0u : ctx->port;
+}
+
+#ifndef _WIN32
 Client::Client()
 {
   static std::once_flag flag;
   std::call_once(flag, [](){ ne_sock_init(); });
-  scheme.fill(0x00);
 }
 
 Client::~Client()
 {
 }
-
 int AcceptAllSSL(void*, int, const ne_ssl_certificate*)
 {
   return 0;//always acceptable
@@ -43,35 +58,36 @@ std::string Client::connect(const std::string& httpURL)
   auto colpos = httpURL.find_first_of("://");
   if (colpos < 4 || colpos > 5)
     return std::string();
-  ::memcpy(scheme.data(), httpURL.data(), colpos);
-
-  for(unsigned c = 0; c < 5; ++c)
-    scheme[c] = std::tolower(scheme[c]);
 
   ctx = std::make_shared<ClientCtx>();
+  ::memcpy(ctx->scheme.data(), httpURL.data(), colpos);
+
+  for(unsigned c = 0; c < 5; ++c)
+    ctx->scheme[c] = std::tolower(ctx->scheme[c]);
+
   ctx->host_and_port = ExtractHostPortHttp(httpURL);
-  int port = (0 == ::memcmp(scheme.data(), "https", 5)) ? 443 : 80;
+  ctx->port = ctx->isHttps() ? 443 : 80;
   ne_session* ne = nullptr;
   auto pos = ctx->host_and_port.find_first_of(':');
   if (std::string::npos != pos)
     {//case format host.com:443
       char* end = nullptr;
-      port = ::strtol(ctx->host_and_port.data() + (1 + pos), &end, 10);
+      ctx->port = ::strtol(ctx->host_and_port.data() + (1 + pos), &end, 10);
       std::array<char, 80> hostStr;
       hostStr.fill(0x00);
       ::memcpy(hostStr.data(), ctx->host_and_port.data(), pos);
-      ne = ne_session_create(scheme.data(), hostStr.data(), port);
+      ne = ne_session_create(ctx->scheme.data(), hostStr.data(), ctx->port);
     }
   else
     {//case format  host.com (no port)
-      ne = ne_session_create(scheme.data(), ctx->host_and_port.data(), port);
+      ne = ne_session_create(ctx->scheme.data(), ctx->host_and_port.data(), ctx->port);
       std::array<char,8> temp; temp.fill(0);
-      ::snprintf(temp.data(), temp.size(), ":%u", port);
+      ::snprintf(temp.data(), temp.size(), ":%u", ctx->port);
       ctx->host_and_port.append(temp.data());
     }
   ctx->sess = ne;
   ne_set_useragent(ctx->sess, "libneon");
-  if (0 == ::memcmp(scheme.data(), "https", 5))
+  if (ctx->isHttps())
     {
       ne_ssl_trust_default_ca(ne);
       ne_ssl_set_verify(ne, &AcceptAllSSL, nullptr);
@@ -100,5 +116,89 @@ Client::IssuedRequest Client::issueRequest(const char* method, const char* path,
   out.req = std::shared_ptr<ne_request>(rq, [out](ne_request* ptr){ne_request_destroy(ptr);} );
   return out;
 }
+#else //case _WIN32
+//-----------------------------------------------------------------
+ClientCtx::ClientCtx(QObject* p) : QObject(p)
+{
+  mgr = new QNetworkAccessManager(this);
+  QObject::connect(mgr, SIGNAL(finished(QNetworkReply*)),
+                   this, SLOT(replyFinished(QNetworkReply*)), Qt::DirectConnection);
+  port = 0;
+  scheme.fill(0x00);
+}
+//-----------------------------------------------------------------
+void ClientCtx::replyFinished(QNetworkReply* rep)
+{
+  reply.reset(rep);
+  response.resize(std::max(rep->size(),(qint64)0));
+
+  //read out and copy to ctx->response
+  size_t pos = 0;
+  for(qint64 rd = 0; pos < response.size(); pos += rd)
+    {
+      rep->read(&(response[pos]), response.size() - pos);
+      pos += rd;
+    }
+  cond.notify_all();
+}
+//----------------------------------
+Client::Client()
+{
+}
+
+Client::~Client()
+{
+}
+
+std::string Client::connect(const std::string& httpURL)
+{//temporary for Windows: do not really connect, just fill the fields
+  auto colpos = httpURL.find_first_of("://");
+  if (colpos < 4 || colpos > 5)
+    return std::string();
+
+  ctx = std::make_shared<ClientCtx>();
+  ctx->scheme.fill(0x00);
+  ::memcpy(ctx->scheme.data(), httpURL.data(), colpos);
+
+  for(unsigned c = 0; c < 5; ++c)
+    ctx->scheme[c] = std::tolower(ctx->scheme[c]);
+
+  ctx->host_and_port = ExtractHostPortHttp(httpURL);
+  ctx->port = (ctx->isHttps()) ? 443 : 80;
+  auto pos = ctx->host_and_port.find_first_of(':');
+  if (std::string::npos != pos)
+    {//case user provided format host.com:8080
+      char* end = nullptr;
+      ctx->port = ::strtol(ctx->host_and_port.data() + (1 + pos), &end, 10);
+    }
+
+  QString host = QString::fromStdString(ctx->host_and_port.substr(0, pos));
+  if (ctx->isHttps())
+    ctx->mgr->connectToHostEncrypted(host, ctx->port);
+  else
+    ctx->mgr->connectToHost(host, ctx->port);
+  return ctx->host_and_port;
+}
+
+Client::IssuedRequest Client::issueRequest(const char* method, const char* path, bool withLock)
+{
+  (void)method;
+  std::shared_ptr<std::lock_guard<std::mutex>> lk;
+  if (withLock) {
+      lk = std::make_shared<std::lock_guard<std::mutex>>(ctx->mu);
+    }
+  ctx->response.clear();
+
+  Client::IssuedRequest out;
+  QString url = scheme();
+  url += ctx->host_and_port.data();
+  url += path;
+  out.req.setUrl(url);
+  out.ctx = ctx;
+  return out;
+}
+
+#endif//_WIN32
+
 
 }//WebGrep
