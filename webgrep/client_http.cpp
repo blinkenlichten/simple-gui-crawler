@@ -158,6 +158,7 @@ WebGrep::IssuedRequest Client::issueRequest(const char* method, const char* path
 
   IssuedRequest out;
   QString url = scheme();
+  url += "://";
   url += ctx->host_and_port.data();
   url += path;
   out.req.setUrl(url);

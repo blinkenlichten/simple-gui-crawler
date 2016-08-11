@@ -162,6 +162,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
       issue.ctx->cond.wait_for(lk, std::chrono::seconds(5));
     }
   //ok, got an reply
+  g.responseCode = issue.ctx->reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
   g.pageContent = std::move(issue.ctx->response);
   g.pageIsReady = !g.pageContent.empty();
 #endif//NO_LIBNEON

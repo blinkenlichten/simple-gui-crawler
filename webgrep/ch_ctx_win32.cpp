@@ -49,7 +49,6 @@ std::shared_ptr<QNetworkReply> ClientCtx::makeGet(const QNetworkRequest& req)
   connect(rep, SIGNAL(sslErrors(QList<QSslError>)),
           this, SLOT(onSslErrors(QList<QSslError>)), Qt::DirectConnection);
 
-  qDebug() << mgr->supportedSchemes();
   reply.reset(rep);
   return reply;
 }
