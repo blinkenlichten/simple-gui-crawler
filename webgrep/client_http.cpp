@@ -34,7 +34,7 @@ uint16_t Client::port() const
   return (nullptr == ctx)? 0u : ctx->port;
 }
 
-#ifndef _WIN32
+#ifndef NO_LIBNEON
 Client::Client()
 {
   static std::once_flag flag;
@@ -109,7 +109,7 @@ WebGrep::IssuedRequest Client::issueRequest(const char* method, const char* path
   out.req = std::shared_ptr<ne_request>(rq, [out](ne_request* ptr){ne_request_destroy(ptr);} );
   return out;
 }
-#else //case _WIN32
+#else //case NO_LIBNEON
 //-----------------------------------------------------------------
 //----------------------------------
 Client::Client()
@@ -166,7 +166,7 @@ WebGrep::IssuedRequest Client::issueRequest(const char* method, const char* path
   return out;
 }
 
-#endif//_WIN32
+#endif//NO_LIBNEON
 
 
 }//WebGrep

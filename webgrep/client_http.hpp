@@ -1,7 +1,7 @@
 #ifndef CLIENT_HTTP_HPP
 #define	CLIENT_HTTP_HPP
 
-#ifndef _WIN32
+#ifndef NO_LIBNEON
     #include "ch_ctx_nix.h"
 #else
     #include "ch_ctx_win32.h"

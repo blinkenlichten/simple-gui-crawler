@@ -116,7 +116,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   if(w.hostPort.empty())
     return false;
 
-#ifndef _WIN32
+#ifndef NO_LIBNEON
   //issue GET request
   WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
   //parse the results
@@ -149,7 +149,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
     };
   g.pageContent = std::move(rq.ctx->response);
   g.pageIsReady = true;
-#else//case Windows
+#else//case NO_LIBNEON
   //temporary solution for Windows: not using libneon, but QtNetwork instead
   //issue GET request
   WebGrep::IssuedRequest issue = w.httpClient.issueRequest("GET", "/");
@@ -164,7 +164,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   //ok, got an reply
   g.pageContent = std::move(issue.ctx->response);
   g.pageIsReady = !g.pageContent.empty();
-#endif//_WIN32
+#endif//NO_LIBNEON
 
   return g.pageIsReady;
 }

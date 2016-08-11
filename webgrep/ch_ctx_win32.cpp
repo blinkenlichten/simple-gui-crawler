@@ -78,6 +78,7 @@ void ClientCtx::onFinished()
 void ClientCtx::onSslErrors(const QList<QSslError> &errors)
 {
   reply->ignoreSslErrors();
+  (void)errors;
 }
 void ClientCtx::onNetError(QNetworkReply::NetworkError e)
 {

@@ -1,4 +1,5 @@
 #include "ch_ctx_nix.h"
+#include <cstring>
 
 namespace WebGrep {
 

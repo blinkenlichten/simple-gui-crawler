@@ -3,6 +3,7 @@
 #include <string>
 #include <array>
 #include <mutex>
+#include <memory>
 #include "noncopyable.hpp"
 
 extern "C" {
@@ -18,17 +19,15 @@ namespace WebGrep {
 class ClientCtx : public WebGrep::noncopyable
 {
 public:
-  ClientCtx() : sess(nullptr) { }
+  ClientCtx() : sess(nullptr), port(0) { }
 
-  virtual ~ClientCtx()
-  {
-    if (nullptr != sess)
-      ne_session_destroy(sess);
-  }
+  virtual ~ClientCtx();
+
   //@return TRUE if scheme is "https"
   bool isHttps() const;
 
   ne_session* sess;
+  uint16_t port;
   std::array<char, 6> scheme;// "http\0\0" or "https\0"
   std::string response;
   std::string host_and_port;

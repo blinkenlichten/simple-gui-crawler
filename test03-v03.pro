@@ -7,11 +7,21 @@
 QT       += core gui
 CONFIG += debug
 CCFLAG += -std=c++11
-win32 {
-QT += network
-}
+
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+
+# uncomment to build against QNetwork instead of libneon
+VAR_NO_NEON = 1
+defined(VAR_NO_NEON,var) {
+    DEFINES += NO_LIBNEON
+    QT += network
+}
+
+## external dependencies for MinGW
+# OpenSSL: libssl.a libcrypto.a (build using mingw/MSYS shell)
+# libnettle: libnettle.a libhogweed.a
+# NEON: libneon.a
 
 TARGET = test03-v03
 TEMPLATE = app
@@ -33,13 +43,14 @@ HEADERS  += widget.h webgrep/client_http.hpp \
     webgrep/crawler_private.h \
     webgrep/noncopyable.hpp \
 
-unix {
-    SOURCES += webgrep/ch_ctx_nix.cpp
-    HEADERS += webgrep/ch_ctx_nix.h
-}
-win32 {
+defined(VAR_NO_NEON,var) {
+message("using QtNetwork")
     SOURCES += webgrep/ch_ctx_win32.cpp
     HEADERS += webgrep/ch_ctx_win32.h
+} else {
+message("using libneon")
+    SOURCES += webgrep/ch_ctx_nix.cpp
+    HEADERS += webgrep/ch_ctx_nix.h
 }
 
 FORMS    += widget.ui
@@ -50,7 +61,9 @@ LIBS += -L$$_PRO_FILE_PWD_/3rdparty/lib
 unix{
   LIBS += -lboost_system -lboost_container -lboost_context -lboost_thread\
 -lssl -lcrypto -lboost_atomic
-  LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libneon.a
+  !defined(VAR_NO_NEON,var) {
+     LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libneon.a
+  }
 }
 win32
 {
@@ -66,7 +79,7 @@ $$libpath/libboost_context$$endian \
 $$libpath/libboost_thread$$endian \
 $$libpath/libboost_atomic$$endian \
 $$libpath/libgdi32.a $$libpath/libws2_32.a  $$libpath/libkernel32.a \
-$$libpath/libwsock32.a
+$$libpath/libwsock32.a $$libpath/libcrypto.a $$libpath/libssl.a
 
 #$$libpath/libssl.a \
 #$$libpath/libneon.a \
