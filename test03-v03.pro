@@ -11,7 +11,7 @@ CCFLAG += -std=c++11
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 # uncomment to build against QNetwork instead of libneon
-VAR_NO_NEON = 1
+# VAR_NO_NEON = 1
 defined(VAR_NO_NEON,var) {
     DEFINES += NO_LIBNEON
     QT += network
@@ -26,21 +26,21 @@ TARGET = test03-v03
 TEMPLATE = app
 
 
-SOURCES += main.cpp\
-        widget.cpp webgrep/client_http.cpp \
+SOURCES += main.cpp widget.cpp link_status_widget.cpp \
+         webgrep/client_http.cpp \
     webgrep/crawler.cpp \
     webgrep/crawler_worker.cpp \
     webgrep/linked_task.cpp \
-    link_status_widget.cpp \
     webgrep/crawler_private.cpp \
 
-HEADERS  += widget.h webgrep/client_http.hpp \
+HEADERS  += widget.h  link_status_widget.h \
+webgrep/client_http.hpp \
     webgrep/crawler.h \
     webgrep/crawler_worker.h \
     webgrep/linked_task.h \
-    link_status_widget.h \
     webgrep/crawler_private.h \
     webgrep/noncopyable.hpp \
+
 
 defined(VAR_NO_NEON,var) {
 message("using QtNetwork")
@@ -64,8 +64,7 @@ unix{
      LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libneon.a
   }
 }
-win32
-{
+win32{
 # MinGW32 only, at the moment
 libpath = $$_PRO_FILE_PWD_/3rdparty/lib/
 
@@ -77,11 +76,27 @@ $$libpath/libboost_container$$endian \
 $$libpath/libboost_context$$endian \
 $$libpath/libboost_thread$$endian \
 $$libpath/libboost_atomic$$endian \
+$$libpath/libintl.a $$libpath/libintl.dll.a \
+$$libpath/libproxy.dll.a \
+$$libpath/libwsock32.a \
+$$libpath/libssp_nonshared.a \
 $$libpath/libgdi32.a $$libpath/libws2_32.a  $$libpath/libkernel32.a \
-$$libpath/libwsock32.a $$libpath/libcrypto.a $$libpath/libssl.a
+$$libpath/libwsock32.a $$libpath/libcrypto.a $$libpath/libssl.dll.a \
+-L$$_PRO_FILE_PWD_/webgrep  \
+-lmsvcrt -lkernel32 -lgcc $$libpath/libneon.a $$libpath/libneon.dll.a \
+$$libpath/libcrypto.dll.a \
+$$libpath/libntdll.a \
+$$libpath/libntoskrnl.a \
+$$libpath/libiconv.a $$libpath/libiconv.dll.a \
+$$libpath/libgnutls.a $$libpath/libgnutls.dll.a \
+$$libpath/libgnutls-openssl.a $$libpath/libgnutls-openssl.dll.a \
+$$libpath/libgmp.a $$libpath/libgmp.dll.a $$libpath/libp11-kit.dll.a $$libpath/libtasn1.dll.a \
+#$$libpath/libcrtdll.a \
+#$$libpath/libmingwex.a \
+
+
 
 #$$libpath/libssl.a \
-#$$libpath/libneon.a \
 #$$libpath/libgnutls.dll.a $$libpath/libcrypto.a \
 #$$libpath/libhogweed.a $$libpath/libz.a \
 #$$libpath/libgmp.dll.a $$libpath/libp11-kit.dll.a $$libpath/libintl.dll.a \

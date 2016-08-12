@@ -11,7 +11,7 @@ The user must be able to input the URL, number of threads, maximum number of URL
 
 # Compilation
 ## Linux
-+ Install boost libraries (modules: system, regex, thread, atomic) into system path or
++ Install openSSL(development) and boost libraries (modules: system, regex, thread, atomic) into system path or
 write additional keys to the .pro project file.
 + Compile NEON http client library:
 ```
@@ -25,6 +25,113 @@ make -j$(nproc) && make install
 Or install it from Linux package system and modify .pro file to use shared library.
 
 ## Windows
+It got a little bit tricky, because of using MinGW compiler and libneon which is primarly created for Linux, it is based on ./configure BASH script that makes the project.
+So, you need these steps to create the build environment:
+
+### Make build destination directory
+Example: D:\coding\broot  or /d/coding/broot in MSYS/Cygwin shell.
+
+### MinGW
+Install and add location where mingw-gcc.exe lays to PATH system variable,
+for example C:\MinGW\bin
+
+### Cygwin
+Install to D:\cygwin for example
+
+### Download boost https://boost.org
+Unpack it to some location, from Windows CMD shell run the .bat script, then run B2 build system:
+```
+C:
+chdir Users\YourName\Downloads\boost-1.61_0
+bootstrap.bat
+.\b2 toolset=gcc link=shared runtime-link=shared
+
+```
+
+The compiled libraries are in stage\ subdirectory, headers in boost\ .
+Copy them to "broot\lib" and "broot\include" respectively.
+
+### Download & compile OpenSSL using MSYS shell
+```
+cd /c/Users/YourName/Downloads
+tar xvf openssl-1.0.2h.tar.gz
+cd openssl-1.0.2h
+perl Configure shared mingw --prefix=/d/coding/broot
+make depend && make && make install
+```
+
+### Download & compile libexpat (XML parsing):
+Using MSYS shell do this:
+```
+tar expat-2.2.0.tar.bz2
+cd expat-2.2.0
+./configure --prefix=/d/coding/broot
+make -j4 && make install
+```
+
+### Download & compile NEON http://www.webdav.org/neon/
+
+For this one we'll use Cygwin. Run Cygwin's installer and make checks on
+everything related to names GCC or MinGW.
+
+Download NEON and place the archive to D:\cygwin\home\MachineName
+
+Then copy our D:\coding\broot directory to D:\cygwin\home\MachineName\
+it must contain OpenSSL installation(shared libraries).
+Sometimes shared libraries are placed into broot\bin, if the configuration
+script can't see it try copying them to broot\lib
+
+Now lets compile libneon: fun in CYGWIN terminal:
+```
+cd $HOME
+tar xvf neon-0.30.1.tar.gz
+CFLAGS="-I/usr/include" LDFLAGS="-L/usr/lib" ./configure --prefix=$HOME/broot --with-ssl=openssl
+```
+Now edit Makefile and replace 1 text's string
+``` # Makefile
+MAKE=make         #old
+MAKE=mingw32-make #new
+```
+Now compile libneon:
+```
+make -j4 && make install
+```
+If install failed, just find and copy "D:\cygwin\home\MachineName\neon-0.30.1\src\.libs\libneon.a" and .h headers to D:\coding\broot\lib and "\include" respectively.
+
+### Qt project file
+Now copy all contents of D:\coding\broot to project's subdir test03-v03\3rdparty.
+Edit test03-v03.pro file so that it points to correct boost libraries paths and names, for example 
+```
+# MinGW32 only, at the moment
+libpath = $$_PRO_FILE_PWD_/3rdparty/lib/
+
+#modify for your version:
+endian = "-mgw49-mt-1_61.dll.a"
+
+```
+Compile the project using QMake or QtCreator IDE.
+
+### Deployment on Windows: OpenSSL and Qt5
+Due to different licensing approach, Qt5 does not link to OpenSSL libraries,
+instead they load the library at runtime at the path where program.exe is located.
+Copy these to the executable's directory: libeay32.dll ssleay32.dll libgcc_s_dw2.dll
+
+
+# Networking: 2 approches
+As can seen from the repo's history the initial idea was to use boost.asio and it's SSL socket, but it went wrong with HTTPS, it needs more tedious work.
+So I threw it out and decided to use some kind of C library with straightforward API that will just let you to do the jobs.
+
+# C-API library
+My considerations were NEON (http & webdav client) and CURL.
+NEON has much simpler API, because it's intended for HTTP(S) only whereas CURL works over almost any protocol and hence has more complex API.
+Both of them have UNIX-style configurations system and require to use either MSYS or Cygwin (worked out for neon).
+
+# Qt5: QNetworkAccessManager
+The program also has use case of Qt5 networking API, but it somehow doesn't call the documented API signals, might be a Qt's bug or wrong use case.
+It can be turned on on by .pro file variable "VAR_NO_LIBNEON=1",
+then libneon won't be needed ... but the program will fail to download the pages.
+# Others: Microsoft's Cassandra (client/server), Poco libraries
+They're nice, but I couldn't afford MSVC to compile them, it always goes wrong with Microsoft's mutilated free version of MSVC. Thus I had to play around MinGW.
 
 
 # Status

@@ -5,7 +5,6 @@
 #include <atomic>
 #include <vector>
 #include <thread>
-#include "boost/lockfree/queue.hpp"
 #include "boost/thread/thread_pool.hpp"
 #include <stdio.h>
 #include <cstdlib>
