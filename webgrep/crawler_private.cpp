@@ -25,6 +25,37 @@ bool CrawlerPV::selfTest() const
   return true;
 }
 //--------------------------------------------------------------
+void CrawlerPV::start()
+{
+  auto root = taskRoot;
+  WorkerCtx worker = makeWorkerContext();
+
+  //this functor will wake-up pending task from another thread
+  FuncGrepOne(root.get(), worker);
+  size_t spawnedCnt = root->spawnGreppedSubtasks(worker.hostPort, root->grepVars);
+  std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
+
+  //ventillate subtasks:
+  size_t item = 0;
+  auto shp_this = shared_from_this();
+  std::cerr << "llllllllllllllllllllllllllll\n";
+
+  WebGrep::ForEachOnBranch(root.get(),
+                           [shp_this, &item](LinkedTask* node, void*)
+  {
+      //submit recursive grep for each 1-st level subtask to different workers:
+      LonelyTask sheep;
+      sheep.action = &FuncDownloadGrepRecursive;
+      sheep.target = node;
+      sheep.ctx = std::move(shp_this->makeWorkerContext());
+      sheep.root = sheep.ctx.rootNode;
+      std::cerr << "forEachOnBranch: create node for target" << sheep.target->grepVars.targetUrl << "\n";
+
+      shp_this->sheduleTask(sheep);
+  }, false/*skip root*/);
+
+}
+//--------------------------------------------------------------
 void CrawlerPV::stopThreads()
 {
   stop();
@@ -63,50 +94,67 @@ WorkerCtx CrawlerPV::makeWorkerContext()
   return ctx;
 }
 //---------------------------------------------------------------
-void CrawlerPV::sheduleTask(const WebGrep::LonelyTask& task)
+bool CrawlerPV::sheduleTask(const WebGrep::LonelyTask& task)
 {
-  if (workersPool->closed())
-    {//shedule abandoned task to a vector while we're managing threads:
-      std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonely); (void)lk;
-      lonelyVector.push_back(task);
-      return;
-    }
-  //submit current task:
-  workersPool->submit([task](){
-      WorkerCtx ctx_copy = task.ctx;
-      task.action(task.target, ctx_copy);
-    });
+  try {
+    if (workersPool->closed())
+      {//shedule abandoned task to a vector while we're managing threads:
+        std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonely); (void)lk;
+        lonelyVector.push_back(task);
+        return true;
+      }
+    //submit current task:
+    workersPool->submit([task](){
+        WorkerCtx ctx_copy = task.ctx;
+        task.action(task.target, ctx_copy);
+      });
 
-  //pull out and submit previously abandoned tasks:
-  std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonely); (void)lk;
-  for(const LonelyTask& alone : lonelyVector)
-    {
-      workersPool->submit([alone](){
-          LonelyTask sheep = alone;
-          sheep.action(sheep.target, sheep.ctx);
-        });
-    }
-  lonelyVector.clear();
+    //pull out and submit previously abandoned tasks:
+    std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonely); (void)lk;
+    for(const LonelyTask& alone : lonelyVector)
+      {
+        workersPool->submit([alone](){
+            LonelyTask sheep = alone;
+            sheep.action(sheep.target, sheep.ctx);
+          });
+      }
+    lonelyVector.clear();
+  } catch(std::exception& ex)
+  {
+    std::cerr << "Exception: " << __FUNCTION__ << "  \n";
+    if (onException) { onException(ex.what()); }
+    return false;
+  }
+  return true;
+
 }
 //-----------------------------------------------------------------
-void CrawlerPV::sheduleFunctor(CallableFunc_t func)
+bool CrawlerPV::sheduleFunctor(CallableFunc_t func)
 {
-  if (workersPool->closed())
-    {//workers pool is unavailable, lets stack tasks in the vector
-      std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonelyFunctors); (void)lk;
-      lonelyFunctorsVector.push_back(func);
-      return;
-    }
-  //submit current task:
-  workersPool->submit(func);
+  try {
+    if (workersPool->closed())
+      {//workers pool is unavailable, lets stack tasks in the vector
+        std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonelyFunctors); (void)lk;
+        lonelyFunctorsVector.push_back(func);
+        return true;
+      }
+    //submit current task:
+    workersPool->submit(func);
 
-  //submit delayed tasks from the vector:
-  std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonelyFunctors); (void)lk;
-  for(CallableFunc_t& func : lonelyFunctorsVector)
-    {
-      workersPool->submit(std::move(func));
-    }
-  lonelyFunctorsVector.clear();
+    //submit delayed tasks from the vector:
+    std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonelyFunctors); (void)lk;
+    for(CallableFunc_t& func : lonelyFunctorsVector)
+      {
+        workersPool->submit(std::move(func));
+      }
+    lonelyFunctorsVector.clear();
+  } catch(std::exception& ex)
+  {
+    std::cerr << "Exception: " << __FUNCTION__ << "  \n";
+    if (onException) { onException(ex.what()); }
+    return false;
+  }
+  return true;
 }
 
 

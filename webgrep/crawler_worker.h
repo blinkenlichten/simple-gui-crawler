@@ -28,14 +28,13 @@ typedef std::function<void()> CallableFunc_t;
 struct WorkerCtx
 {
   WorkerCtx() {
-    urlGrepExpressions.push_back(std::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"([^\"]*)\""));
-    urlGrepExpressions.push_back(std::regex("<\\s*A\\s+[^>]*href\\s*=\\s*\"/([_A-Za-z0-9]*)/\""));
-    urlGrepExpressions.push_back(std::regex("(http|https)://[a-zA-Z0-9./?=_-]*"));
+//    urlGrepExpressions.push_back(std::regex("(http|https)://[[:alnum:]./?=_-]*"));
+    urlGrepExpressions.push_back(std::regex("<[[:space:]]*a[[:space:]]*href[[:space:]]*=[[:space:]]*\"[(http|https)]?[:/]?/[[:alnum:]./?=_-]*\""));
     scheme.fill(0);
   }
 
   WebGrep::Client httpClient;
-  std::array<char, 6> scheme;// must be "http\0\0" or "https\0"
+  WebGrep::Scheme6 scheme;// must be "http\0\0" or "https\0"
   std::string hostPort; // site.com:443
 
   std::shared_ptr<LinkedTask> rootNode;

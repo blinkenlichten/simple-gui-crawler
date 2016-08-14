@@ -183,7 +183,7 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
   //spawn N items (leafs) on current branch
   size_t spawnedListSize = spawnNextNodes(targetVariables.matchURLVector.size());
   //for each leaf: configure it with target URL:
-  size_t cnt = ForEachOnBranch(this, func, false/*skip head*/);
+  size_t cnt = ForEachOnBranch(this, func, false/*skip (this) element*/);
   linksCounterPtr->fetch_add(cnt);
   return std::min(cnt, spawnedListSize);
 }

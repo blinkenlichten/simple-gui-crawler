@@ -61,7 +61,8 @@ unix{
   LIBS += -lboost_system -lboost_container -lboost_context -lboost_thread\
 -lssl -lcrypto -lboost_atomic
   !defined(VAR_NO_NEON,var) {
-     LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libneon.a
+#     LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libneon.a
+     LIBS += -lneon
   }
 }
 win32{

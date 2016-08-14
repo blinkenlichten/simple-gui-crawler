@@ -44,10 +44,16 @@ public:
   WorkerCtx makeWorkerContext();
 
   //this method serves as sheduling method for objects LonelyTask (Task pointers basically)
-  void sheduleTask(const WebGrep::LonelyTask& task);
+  //@return FALSE on exception (like bad alloc etc.)
+  bool sheduleTask(const WebGrep::LonelyTask& task);
   //this method serves as sheduling method for functors
-  void sheduleFunctor(CallableFunc_t func);
+  //@return FALSE on exception (like bad alloc etc.)
+  bool sheduleFunctor(CallableFunc_t func);
   void stop() {  }
+
+  //starts the root processing task that will spawn subtasks
+  //this->taskRoot first element is the root of the tree
+  void start();
 
 
   void clear()

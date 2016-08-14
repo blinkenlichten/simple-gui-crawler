@@ -61,42 +61,10 @@ bool Crawler::start(const std::string& url,
     g->targetUrl = url;
     g->grepExpr = grepRegex;
 
-  } catch(std::exception& e)
-  {
-    std::cerr << e.what() << std::endl;
-    if (pv->onException)
-      pv->onException(e.what());
-    return false;
-  }
-
-  //submit a root-task: get the first page and then follow it's content's links in new threads
-  auto fn = [crawlerImpl]() {
-      auto root = crawlerImpl->taskRoot;
-      WorkerCtx worker = crawlerImpl->makeWorkerContext();
-
-      //this functor will wake-up pending task from another thread
-      FuncGrepOne(root.get(), worker);
-      size_t spawnedCnt = root->spawnGreppedSubtasks(worker.hostPort, root->grepVars);
-      std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
-
-      //ventillate subtasks:
-      size_t item = 0;
-
-      WebGrep::ForEachOnBranch(root.get(),
-                               [crawlerImpl, &item](LinkedTask* node, void*)
-      {
-          //submit recursive grep for each 1-st level subtask to different workers:
-          LonelyTask sheep;
-          sheep.action = &FuncDownloadGrepRecursive;
-          sheep.target = node;
-          sheep.ctx = std::move(crawlerImpl->makeWorkerContext());
-          sheep.root = sheep.ctx.rootNode;
-
-          crawlerImpl->sheduleTask(sheep);
-      }, false/*skip root*/);
-    };
-  try {
-    pv->sheduleFunctor(fn);
+    //submit a root-task:
+    //get the first page and then follow it's content's links in new threads.
+    //It is done async. to avoid GUI lags etc.
+    pv->sheduleFunctor([crawlerImpl](){ crawlerImpl->start(); });
   } catch(const std::exception& ex)
   {
     std::cerr << ex.what() << "\n";

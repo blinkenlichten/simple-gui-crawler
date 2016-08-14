@@ -11,6 +11,12 @@
 
 namespace WebGrep {
 
+class Scheme6 : public std::array<char,6>
+{
+public:
+  Scheme6() { this->fill(0x00); }
+};
+
 class ClientCtx : public QObject
 {
   Q_OBJECT
@@ -25,7 +31,7 @@ public:
   std::shared_ptr<QNetworkReply> makeGet(const QNetworkRequest& req);
 
   std::string response;
-  std::array<char, 6> scheme;// "http\0\0" or "https\0"
+  Scheme6 scheme;// "http\0\0" or "https\0"
   uint16_t port;
   std::string host_and_port;
 

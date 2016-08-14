@@ -77,9 +77,16 @@ void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
 
       const char href[] = "href";
       size_t hrefPos = temp.find(href,0,4);
-
-      if (hrefPos < temp.size())
-        {//case href
+      if (hrefPos == std::string::npos)
+        {
+          //case just http://
+          auto page_pos = g.pageContent.begin() + matchURL.position(matchIdx);
+          out[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
+          continue;
+        }
+      for(; hrefPos < std::string::npos; hrefPos = temp.find_first_of(href, hrefPos + sizeof(href-1), sizeof(href-1)))
+        {
+          //case href
           auto quotePos = temp.find_first_of('=',hrefPos);
           quotePos = temp.find_first_of('"', quotePos);
           quotePos++;
@@ -91,11 +98,6 @@ void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
             end += (size_t)(quote2 - quotePos);
           temp.assign(begin, end);
           out[temp] = GrepVars::CIteratorPair(begin, end);
-        }
-      else
-        {//case just http://
-          auto page_pos = g.pageContent.begin() + matchURL.position(matchIdx);
-          out[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
         }
     }
 
@@ -111,10 +113,10 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   w.scheme.fill(0);
 
   w.hostPort = w.httpClient.connect(url);
-  ::memcpy(w.scheme.data(), w.httpClient.scheme(), ::strlen(w.httpClient.scheme()));
-  ::memcpy(g.scheme.data(), w.scheme.data(), g.scheme.size());
-  if(w.hostPort.empty())
+  if (w.hostPort.empty())
     return false;
+  w.scheme.copyFrom(w.httpClient.scheme());
+  w.scheme.writeTo(g.scheme.data());
 
 #ifndef NO_LIBNEON
   //issue GET request
