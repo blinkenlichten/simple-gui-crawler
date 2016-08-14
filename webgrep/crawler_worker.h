@@ -31,8 +31,10 @@ struct WorkerCtx
 //    urlGrepExpressions.push_back(std::regex("(http|https)://[[:alnum:]./?=_-]*"));
     urlGrepExpressions.push_back(std::regex("<[[:space:]]*a[[:space:]]*href[[:space:]]*=[[:space:]]*\"[(http|https)]?[:/]?/[[:alnum:]./?=_-]*\""));
     scheme.fill(0);
+    data_ = nullptr;
   }
 
+  //--------------------------------------------------------
   WebGrep::Client httpClient;
   WebGrep::Scheme6 scheme;// must be "http\0\0" or "https\0"
   std::string hostPort; // site.com:443
@@ -41,11 +43,10 @@ struct WorkerCtx
 
   /** An array of expression to grep URLs from the web pages.*/
   std::vector<std::regex> urlGrepExpressions;
+  void* data_;
+  //--------------------------------------------------------
 
   std::function<void(const std::string& )> onException;
-
-  //the tasks can schedule subtasks
-  typedef std::function<void()> CallableFunc_t;
 
   /** Called by functions to shedule FuncDownloadGrepRecursive.
    * The pointer is not used, it's object is copied */
@@ -65,6 +66,17 @@ struct WorkerCtx
   /** Invoked when a new level of child nodes has spawned, */
   std::function<void(LinkedTask*)> childLevelSpawned;
 
+  //some utilities as methods:
+  typedef bool (*WorkFunc_t)(LinkedTask* task, WorkerCtx& w);
+
+  /** shedule all all nodes of the branch(by .next item) to be executed by given method.
+   * @return number of items sheduled. */
+  size_t sheduleBranchExec(LinkedTask* node,WorkFunc_t method, uint32_t skipCount = 0);
+
+  /** shedule all all nodes of the branch(by .next item) to be executed by given functor.
+   * @return number of items sheduled. */
+  size_t sheduleBranchExecFunctor(LinkedTask* task, std::function<void(LinkedTask*)> functor,
+                                  uint32_t skipCount = 0);
 
 };
 //---------------------------------------------------------------

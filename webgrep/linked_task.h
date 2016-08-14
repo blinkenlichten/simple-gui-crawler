@@ -10,6 +10,7 @@
 
 namespace WebGrep {
 
+typedef std::function<void()> CallableFunc_t;
 
 class WorkerCtx;
 //---------------------------------------------------------------
@@ -61,9 +62,7 @@ void DeleteList(LinkedTask* head);
 /** Apply functor for each item on same branch accessed by(head->next)
  * @return how much times functor has been invoked.
  */
-size_t ForEachOnBranch(LinkedTask* head,
-                       std::function<void(LinkedTask*, void*)> functor,
-                       bool includingHead = true, void* additional = nullptr);
+size_t ForEachOnBranch(LinkedTask* head, std::function<void(LinkedTask*)> functor, uint32_t skipCount = 0);
 //---------------------------------------------------------------
 
 

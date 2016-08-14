@@ -133,15 +133,21 @@ LinkedTask* LinkedTask::spawnChildNode(LinkedTask*& expelledChild)
   return nullptr;
 }
 
-size_t ForEachOnBranch(LinkedTask* head,
-                       std::function<void(LinkedTask*, void*)> functor,
-                       bool includingHead, void* additional)
+size_t ForEachOnBranch(LinkedTask* head, std::function<void(LinkedTask*)> functor,
+                       uint32_t skipCount)
 {
-  LinkedTask* item = includingHead? head : (nullptr != head? ItemLoadAcquire(head->next) : nullptr );
+  size_t sk_cnt = 0;
+  LinkedTask* item = head;
+  for(; nullptr != item && sk_cnt < skipCount; ++sk_cnt)
+    {//traverse to skip first N elements as required in (skipCount)
+      item = ItemLoadAcquire(item->next);
+    }
+
+  //process the elements with the functor:
   size_t cnt = 0;
   for(; nullptr != item; ++cnt, item = ItemLoadAcquire(item->next))
     {
-      functor(item, additional);
+      functor(item);
     }
   return cnt;
 }
@@ -152,7 +158,7 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
     return 0;
 
   size_t cposition = 0;
-  auto func = [this, &cposition, &host_and_port, &targetVariables](LinkedTask* node, void*)
+  auto func = [this, &cposition, &host_and_port, &targetVariables](LinkedTask* node)
   {
     std::string& turl(node->grepVars.targetUrl);
     turl.assign(targetVariables.matchURLVector[cposition].first,
@@ -183,7 +189,7 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
   //spawn N items (leafs) on current branch
   size_t spawnedListSize = spawnNextNodes(targetVariables.matchURLVector.size());
   //for each leaf: configure it with target URL:
-  size_t cnt = ForEachOnBranch(this, func, false/*skip (this) element*/);
+  size_t cnt = ForEachOnBranch(this, func, 1/*skip (this) element*/);
   linksCounterPtr->fetch_add(cnt);
   return std::min(cnt, spawnedListSize);
 }

@@ -36,23 +36,7 @@ void CrawlerPV::start()
   std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
 
   //ventillate subtasks:
-  size_t item = 0;
-  auto shp_this = shared_from_this();
-  std::cerr << "llllllllllllllllllllllllllll\n";
-
-  WebGrep::ForEachOnBranch(root.get(),
-                           [shp_this, &item](LinkedTask* node, void*)
-  {
-      //submit recursive grep for each 1-st level subtask to different workers:
-      LonelyTask sheep;
-      sheep.action = &FuncDownloadGrepRecursive;
-      sheep.target = node;
-      sheep.ctx = std::move(shp_this->makeWorkerContext());
-      sheep.root = sheep.ctx.rootNode;
-      std::cerr << "forEachOnBranch: create node for target" << sheep.target->grepVars.targetUrl << "\n";
-
-      shp_this->sheduleTask(sheep);
-  }, false/*skip root*/);
+  worker.sheduleBranchExec(root.get(), &FuncDownloadGrepRecursive, 1/*skip root task*/ );
 
 }
 //--------------------------------------------------------------

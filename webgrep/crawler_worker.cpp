@@ -59,6 +59,26 @@ bool CheckExtension(const char* buf, unsigned len)
   return !canHazDot && (0 == memcmp(buf, "http", 4) || ('/' == buf[0] || '/' == buf[len - 1]));
 }
 //---------------------------------------------------------------
+size_t WorkerCtx::sheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_t skipCount)
+{
+  LonelyTask sheep;
+  sheep.action = method;
+  sheep.ctx = *this;
+  sheep.root = rootNode;
+  sheep.target = node;
+
+  return WebGrep::ForEachOnBranch(node, [this, &sheep](LinkedTask* node)
+  { sheep.target = node; this->sheduleTask(&sheep);},
+  skipCount);
+}
+
+/** shedule all all nodes of the branch to be executed by given functor.*/
+size_t WorkerCtx::sheduleBranchExecFunctor(LinkedTask* task, std::function<void(LinkedTask*)> functor, uint32_t skipCount)
+{
+  return WebGrep::ForEachOnBranch(task, functor, skipCount);
+}
+
+//---------------------------------------------------------------
 void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
                        const std::smatch& matchURL,
                        GrepVars& g)
@@ -310,21 +330,9 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w)
       w.childLevelSpawned(child);
     }
 
+  //start subtasks in different threads:
   std::cerr << __FUNCTION__ << " scheduling " << n_subtasks << " tasks more.\n";
-  LonelyTask sheep;
-  sheep.root = w.rootNode;
-  sheep.ctx = w;
-  sheep.action = &FuncDownloadGrepRecursive;
-
-  WebGrep::ForEachOnBranch(child,
-                           [&sheep](LinkedTask* _node, void*)
-  {
-    //for node of subtree: schedule this task again to parse them too
-    sheep.target = _node;
-    sheep.ctx.sheduleTask(&sheep);
-  },
-  true/*including head*/);
-
+  w.sheduleBranchExec(task, &FuncDownloadGrepRecursive, 1);
   return true;
 }
 
