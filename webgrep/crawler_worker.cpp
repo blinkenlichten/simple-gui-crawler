@@ -96,6 +96,7 @@ void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
       temp.assign(matchPageBegin, matchPageBegin + shift);
 
       const char href[] = "href";
+      const uint32_t hrefSz = sizeof(href) - 1;
       size_t hrefPos = temp.find(href,0,4);
       if (hrefPos == std::string::npos)
         {
@@ -104,7 +105,8 @@ void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
           out[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
           continue;
         }
-      for(; hrefPos < std::string::npos; hrefPos = temp.find_first_of(href, hrefPos + sizeof(href-1), sizeof(href-1)))
+      for(; hrefPos != std::string::npos;
+          hrefPos = temp.find_first_of(href, hrefPos + hrefSz, hrefSz) )
         {
           //case href
           auto quotePos = temp.find_first_of('=',hrefPos);

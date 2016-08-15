@@ -30,6 +30,7 @@ struct WorkerCtx
   WorkerCtx() {
 //    urlGrepExpressions.push_back(std::regex("(http|https)://[[:alnum:]./?=_-]*"));
     urlGrepExpressions.push_back(std::regex("<[[:space:]]*a[[:space:]]*href[[:space:]]*=[[:space:]]*\"[(http|https)]?[:/]?/[[:alnum:]./?=_-]*\""));
+    urlGrepExpressions.push_back(std::regex("<a\\s[^>]*href=(\"?)([^\" >]*?)\\1[^>]*>(.*?)</a>"));
     scheme.fill(0);
     data_ = nullptr;
   }

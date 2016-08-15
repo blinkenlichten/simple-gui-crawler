@@ -160,12 +160,15 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
   size_t cposition = 0;
   auto func = [this, &cposition, &host_and_port, &targetVariables](LinkedTask* node)
   {
+    if (this == node)
+      { /*skip first*/ return; }
     std::string& turl(node->grepVars.targetUrl);
     turl.assign(targetVariables.matchURLVector[cposition].first,
                 targetVariables.matchURLVector[cposition].second);
     auto httpPos = turl.find_first_of("http");
     if (std::string::npos != httpPos && '/' != turl[0])
-      {//neither of http:// or "/resource" link types
+      {//neither of http:// or "/resource" link types, abandon the item
+        ++cposition;
         return;
       }
     //deal with local href links: href=/resource.html or leave if href="http://.."
