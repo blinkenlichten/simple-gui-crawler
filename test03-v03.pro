@@ -61,8 +61,7 @@ unix{
   LIBS += -lboost_system -lboost_container -lboost_context -lboost_thread\
 -lssl -lcrypto -lboost_atomic
   !defined(VAR_NO_NEON,var) {
-#     LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libneon.a
-     LIBS += -lneon
+     LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libneon.a
   }
 }
 win32{
@@ -82,16 +81,20 @@ $$libpath/libproxy.dll.a \
 $$libpath/libwsock32.a \
 $$libpath/libssp_nonshared.a \
 $$libpath/libgdi32.a $$libpath/libws2_32.a  $$libpath/libkernel32.a \
-$$libpath/libwsock32.a $$libpath/libcrypto.a $$libpath/libssl.dll.a \
+$$libpath/libwsock32.a \
+#$$libpath/libcrypto.a $$libpath/libssl.dll.a \
+-L$$libpath \
 -L$$_PRO_FILE_PWD_/webgrep  \
--lmsvcrt -lkernel32 -lgcc $$libpath/libneon.a $$libpath/libneon.dll.a \
-$$libpath/libcrypto.dll.a \
-$$libpath/libntdll.a \
-$$libpath/libntoskrnl.a \
-$$libpath/libiconv.a $$libpath/libiconv.dll.a \
-$$libpath/libgnutls.a $$libpath/libgnutls.dll.a \
-$$libpath/libgnutls-openssl.a $$libpath/libgnutls-openssl.dll.a \
-$$libpath/libgmp.a $$libpath/libgmp.dll.a $$libpath/libp11-kit.dll.a $$libpath/libtasn1.dll.a \
+-lmsvcrt -lkernel32 -lgcc -lssl -lcrypto -lgssapi_krb5 	-lcom_err -lproxy -pthread -lz -liconv \
+$$libpath/libgssapi_krb5.dll.a $$libpath/libcom_err.dll.a \
+-lcygneon-27 $$libpath/libneon.dll.a \
+#$$libpath/libcrypto.dll.a \
+#$$libpath/libntdll.a \
+#$$libpath/libntoskrnl.a \
+#$$libpath/libiconv.a $$libpath/libiconv.dll.a \
+#$$libpath/libgnutls.a $$libpath/libgnutls.dll.a \
+#$$libpath/libgnutls-openssl.a $$libpath/libgnutls-openssl.dll.a \
+#$$libpath/libgmp.a $$libpath/libgmp.dll.a $$libpath/libp11-kit.dll.a $$libpath/libtasn1.dll.a \
 #$$libpath/libcrtdll.a \
 #$$libpath/libmingwex.a \
 
