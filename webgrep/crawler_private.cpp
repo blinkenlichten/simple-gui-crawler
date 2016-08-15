@@ -32,11 +32,13 @@ void CrawlerPV::start()
 
   //this functor will wake-up pending task from another thread
   FuncGrepOne(root.get(), worker);
-  size_t spawnedCnt = root->spawnGreppedSubtasks(worker.hostPort, root->grepVars);
+  LinkedTask* expell = nullptr;
+  LinkedTask* child = root->spawnChildNode(expell); DeleteList(expell);
+  size_t spawnedCnt = child->spawnGreppedSubtasks(worker.hostPort, root->grepVars, 0);
   std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
 
   //ventillate subtasks:
-  worker.sheduleBranchExec(root.get(), &FuncDownloadGrepRecursive, 1/*skip root task*/ );
+  worker.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 0 );
 
 }
 //--------------------------------------------------------------

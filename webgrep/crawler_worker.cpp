@@ -225,6 +225,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
     bool gotText = std::regex_search(g.pageContent, matchedText, g.grepExpr);
 
     //grep the http:// URLs and spawn new nodes:
+#if CRAWLER_WORKER_USE_REGEXP
     for(std::regex& regexp : w.urlGrepExpressions)
       {
         std::smatch matchURL;
@@ -233,6 +234,58 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
             PostProcHrefLinks(matches, matchURL, g);
           }
       }
+#else
+    {
+      const char hrefCSTR[] = "href";
+      const char httpCSTR[] = "http";
+      const uint32_t hrefSz = sizeof(hrefCSTR) - 1;
+      const uint32_t httpSz = sizeof(httpCSTR) - 1;
+      for(size_t pos = 0; (pos + std::max(hrefSz,httpSz)) < g.pageContent.size(); ++pos)
+        {
+          size_t linkPos = pos;
+          bool isHref = false;
+          const char* ptr = g.pageContent.data() + pos;
+          if (0 == ::memcmp(ptr, hrefCSTR, hrefSz))
+            {
+              //case href = "/resource/res2/page.html"
+              linkPos = g.pageContent.find_first_of('=',4 + pos);
+              isHref = true;
+            }
+          else if (0 == ::memcmp(ptr, httpCSTR, httpSz)
+                   && (*ptr == ':' || (*ptr == 's')))
+            {
+              isHref = false;
+            }
+          else
+            {
+              continue;
+            }
+
+          linkPos = g.pageContent.find_first_of('"', linkPos);
+          linkPos++;
+          //make new iterators that point to g.pageContent
+          auto begin = g.pageContent.begin();
+          begin += isHref? linkPos : pos;
+          auto end = begin;
+          auto quote2 = g.pageContent.find_first_of('"', linkPos);
+          end += (size_t)(quote2 - linkPos);
+          if (quote2 == std::string::npos
+              || (end - begin) <= 1
+              || (isHref && !(*begin == '/' || *begin == 'h'))
+              || (!isHref && (begin + 10) > end )
+              )
+            {
+              continue;
+            }
+          std::string temp;
+          temp.assign(begin, end);
+          matches[temp] = GrepVars::CIteratorPair(begin, end);
+          pos += (end - begin);
+        }
+
+    }
+
+#endif
     //---------------------------------------------------------------
     //put all together:
     //---------------------------------------------------------------
@@ -324,17 +377,15 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w)
   LinkedTask* child = task->spawnChildNode(old); DeleteList(old);
 
   //create next level linked list from grepped URLS:
-  size_t n_subtasks = child->spawnGreppedSubtasks(w.hostPort, task->grepVars);
+  size_t n_subtasks = child->spawnGreppedSubtasks(w.hostPort, g, 0);
 
   //emit signal that we've spawned a new level:
-  if (0 != n_subtasks && nullptr != w.childLevelSpawned)
-    {
-      w.childLevelSpawned(child);
-    }
+  if (nullptr != w.childLevelSpawned)
+    { w.childLevelSpawned(child); }
 
   //start subtasks in different threads:
   std::cerr << __FUNCTION__ << " scheduling " << n_subtasks << " tasks more.\n";
-  w.sheduleBranchExec(task, &FuncDownloadGrepRecursive, 1);
+  w.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 1);
   return true;
 }
 

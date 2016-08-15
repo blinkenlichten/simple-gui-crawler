@@ -11,6 +11,7 @@
 #include "noncopyable.hpp"
 #include "linked_task.h"
 
+#define CRAWLER_WORKER_USE_REGEXP 0
 
 namespace WebGrep {
 
@@ -27,12 +28,16 @@ typedef std::function<void()> CallableFunc_t;
 */
 struct WorkerCtx
 {
-  WorkerCtx() {
-//    urlGrepExpressions.push_back(std::regex("(http|https)://[[:alnum:]./?=_-]*"));
-    urlGrepExpressions.push_back(std::regex("<[[:space:]]*a[[:space:]]*href[[:space:]]*=[[:space:]]*\"[(http|https)]?[:/]?/[[:alnum:]./?=_-]*\""));
-    urlGrepExpressions.push_back(std::regex("<a\\s[^>]*href=(\"?)([^\" >]*?)\\1[^>]*>(.*?)</a>"));
+  WorkerCtx()
+  {
+#if CRAWLER_WORKER_USE_REGEXP
+    urlGrepExpressions.push_back(std::regex("href[ ]?=[ ]?\"[http]?[https]?[:/]?/[^ \"]*\"", std::regex::egrep));
+#endif
     scheme.fill(0);
     data_ = nullptr;
+
+    childLevelSpawned = [](LinkedTask* task)
+    { std::cerr << "new childLevel: " << task->grepVars.targetUrl << "\n";};
   }
 
   //--------------------------------------------------------
@@ -43,7 +48,10 @@ struct WorkerCtx
   std::shared_ptr<LinkedTask> rootNode;
 
   /** An array of expression to grep URLs from the web pages.*/
-  std::vector<std::regex> urlGrepExpressions;
+#if CRAWLER_WORKER_USE_REGEXP
+  std::vector<std::regex> urlGrepExpressions; //sometimes we do it without regexp.
+#endif
+
   void* data_;
   //--------------------------------------------------------
 

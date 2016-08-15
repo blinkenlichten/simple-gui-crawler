@@ -103,7 +103,7 @@ public:
 
   /** Scan targetVariables.matchURLVector[] and create linked list of subtasks on CURRENT LEVEL.
    * @return quantity of subtasks spawned. */
-  size_t spawnGreppedSubtasks(const std::string& host_and_port, const GrepVars& targetVariables);
+  size_t spawnGreppedSubtasks(const std::string& host_and_port, const GrepVars& targetVariables, size_t skipCount = 0);
 
   //level of this node
   unsigned level, order;

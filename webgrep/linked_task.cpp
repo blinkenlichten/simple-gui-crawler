@@ -152,7 +152,7 @@ size_t ForEachOnBranch(LinkedTask* head, std::function<void(LinkedTask*)> functo
   return cnt;
 }
 
-size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const GrepVars& targetVariables)
+size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const GrepVars& targetVariables, size_t skipCount)
 {
   if (!targetVariables.pageIsParsed)
     return 0;
@@ -192,9 +192,9 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
   //spawn N items (leafs) on current branch
   size_t spawnedListSize = spawnNextNodes(targetVariables.matchURLVector.size());
   //for each leaf: configure it with target URL:
-  size_t cnt = ForEachOnBranch(this, func, 1/*skip (this) element*/);
+  size_t cnt = ForEachOnBranch(this, func, skipCount);
   linksCounterPtr->fetch_add(cnt);
-  return std::min(cnt, spawnedListSize);
+  return cnt;
 }
 
 //---------------------------------------------------------------
