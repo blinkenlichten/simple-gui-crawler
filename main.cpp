@@ -2,9 +2,13 @@
 #include <QApplication>
 #include "webgrep/crawler.h"
 #include <QDir>
+#include "webgrep/thread_pool.h"
+#include <cassert>
 
 int main(int argc, char *argv[])
 {
+  assert(WebGrep::ThreadsPool::performSelfTest());
+
   QApplication a(argc, argv);
   {
     QDir dir(QApplication::applicationDirPath());

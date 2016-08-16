@@ -5,7 +5,7 @@
 #include <atomic>
 #include <vector>
 #include <thread>
-#include "boost/thread/thread_pool.hpp"
+#include "thread_pool.h"
 #include <stdio.h>
 #include <cstdlib>
 #include <cassert>
@@ -24,7 +24,7 @@ public:
 
     maxLinksCount->store(4096);
     currentLinksCount->store(0);
-    workersPool = std::make_shared<boost::executors::basic_thread_pool>(4);
+    workersPool = std::make_shared<WebGrep::ThreadsPool>(4);
 
     selfTest();
   }
@@ -68,7 +68,7 @@ public:
   //main task (for first html page) all other are subtasks
   std::shared_ptr<LinkedTask> taskRoot;
 
-  std::shared_ptr<boost::executors::basic_thread_pool> workersPool;
+  std::shared_ptr<WebGrep::ThreadsPool> workersPool;
 
   //these shared by all tasks spawned by the object CrawlerPV:
   std::shared_ptr<std::atomic_uint> maxLinksCount, currentLinksCount;

@@ -7,10 +7,10 @@
 
 #include <functional>
 #include <iostream>
+#include "thread_pool.h"
 
 namespace WebGrep {
 
-typedef std::function<void()> CallableFunc_t;
 
 class WorkerCtx;
 //---------------------------------------------------------------

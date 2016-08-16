@@ -32,6 +32,8 @@ SOURCES += main.cpp widget.cpp link_status_widget.cpp \
     webgrep/crawler_worker.cpp \
     webgrep/linked_task.cpp \
     webgrep/crawler_private.cpp \
+    webgrep/thread_pool.cpp \
+
 
 HEADERS  += widget.h  link_status_widget.h \
 webgrep/client_http.hpp \
@@ -40,6 +42,7 @@ webgrep/client_http.hpp \
     webgrep/linked_task.h \
     webgrep/crawler_private.h \
     webgrep/noncopyable.hpp \
+    webgrep/thread_pool.h \
 
 
 defined(VAR_NO_NEON,var) {
@@ -58,8 +61,7 @@ INCLUDEPATH += ./3rdparty/include
 LIBS += -L$$_PRO_FILE_PWD_/3rdparty/lib
 
 unix{
-  LIBS += -lboost_system -lboost_container -lboost_context -lboost_thread\
--lssl -lcrypto -lboost_atomic
+  LIBS += -lssl -lcrypto 
   !defined(VAR_NO_NEON,var) {
 #     LIBS += $$_PRO_FILE_PWD_/3rdparty/lib/libneon.a
      LIBS += -lneon
@@ -69,15 +71,7 @@ win32{
 # MinGW32 only, at the moment
 libpath = $$_PRO_FILE_PWD_/3rdparty/lib/
 
-#modify for your version:
-endian = "-mgw49-mt-1_61.dll.a"
-
-LIBS += $$libpath/libboost_system$$endian \
-$$libpath/libboost_container$$endian \
-$$libpath/libboost_context$$endian \
-$$libpath/libboost_thread$$endian \
-$$libpath/libboost_atomic$$endian \
-$$libpath/libintl.a $$libpath/libintl.dll.a \
+LIBS += $$libpath/libintl.a $$libpath/libintl.dll.a \
 $$libpath/libproxy.dll.a \
 $$libpath/libwsock32.a \
 $$libpath/libssp_nonshared.a \

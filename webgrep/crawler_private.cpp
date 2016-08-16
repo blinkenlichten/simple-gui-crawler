@@ -52,7 +52,7 @@ void CrawlerPV::stopThreads()
       if (nullptr == workersCopy)
         { return; }
       try {
-        workersCopy->join();
+        workersCopy->joinAll();
       } catch(...)
       { std::cerr << "Error! Failed to join workers thread!\n";
       }

@@ -95,7 +95,7 @@ void Crawler::setThreadsNumber(unsigned nthreads)
     }
   try {
     pv->stopThreads();
-    pv->workersPool.reset(new boost::basic_thread_pool(nthreads));
+    pv->workersPool.reset(new WebGrep::ThreadsPool(nthreads));
 
   } catch(const std::exception& ex)
   {
