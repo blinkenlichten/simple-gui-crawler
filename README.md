@@ -200,3 +200,47 @@ deleter and update the GUI elements that shows the progress of the scanning proc
 
 ![Screenshot](https://raw.githubusercontent.com/blinkenlichten/test03-v03/master/images/screenshot.png)
 
+
+List of current runtime dependencies for build under MS Windows & Cygwin,
+the item cygneon-27.dll is the one that has been compiled under Cygwin manually.
+
+```
+cygcom_err-2.dll
+cygcrypto-1.0.0.dll
+cygexpat-1.dll
+cygffi-6.dll
+cyggcc_s-1.dll
+cyggmp-10.dll
+cyggnutls-28.dll
+cyggnutls-openssl-27.dll
+cyggnutlsxx-28.dll
+cyggssapi_krb5-2.dll
+cyghogweed-2.dll
+cygiconv-2.dll
+cygintl-8.dll
+cygk5crypto-3.dll
+cygkrb5-3.dll
+cygkrb5support-0.dll
+cygneon-27.dll
+cygnettle-4.dll
+cygp11-kit-0.dll
+cygproxy-1.dll
+cygssl-1.0.0.dll
+cygstdc++-6.dll
+cygtasn1-6.dll
+cygwin1.dll
+cygz.dll
+libboost_atomic-mgw49-mt-1_61.dll
+libboost_container-mgw49-mt-1_61.dll
+libboost_context-mgw49-mt-1_61.dll
+libboost_coroutine-mgw49-mt-1_61.dll
+libboost_system-mgw49-mt-1_61.dll
+libboost_thread-mgw49-mt-1_61.dll
+libgcc_s_dw2-1.dll
+libneon-27.dll
+libstdc++-6.dll
+libwinpthread-1.dll
+Qt5Cored.dll
+Qt5Guid.dll
+Qt5Widgetsd.dll
+```
