@@ -140,7 +140,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   w.scheme.copyFrom(w.httpClient.scheme());
   w.scheme.writeTo(g.scheme.data());
 
-#ifndef NO_LIBNEON
+#ifdef WITH_LIBNEON
   //issue GET request
   WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
   //parse the results
@@ -173,7 +173,18 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
     };
   g.pageContent = std::move(rq.ctx->response);
   g.pageIsReady = true;
-#else//case NO_LIBNEON
+#elif defined(WITH_LIBCURL)
+  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
+  rq.res = curl_easy_perform(rq.ctx->curl);
+  rq.ctx->status = rq.res;
+  g.pageContent = std::move(rq.ctx->response);
+  g.pageIsReady = (rq.res == CURLE_OK);
+  curl_easy_cleanup(rq.ctx->curl);
+
+
+
+//WITH_LIBCURL
+#elif defined(WITH_QTNETWORK)
   //temporary solution for Windows: not using libneon, but QtNetwork instead
   //issue GET request
   WebGrep::IssuedRequest issue = w.httpClient.issueRequest("GET", "/");
@@ -189,7 +200,8 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   g.responseCode = issue.ctx->reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
   g.pageContent = std::move(issue.ctx->response);
   g.pageIsReady = !g.pageContent.empty();
-#endif//NO_LIBNEON
+//WITH_QTNETWORK
+#endif//WITH_LIBNEON
 
   return g.pageIsReady;
 }

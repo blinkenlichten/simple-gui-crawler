@@ -7,7 +7,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <vector>
-#include "webgrep/noncopyable.hpp"
+#include "noncopyable.hpp"
 
 namespace WebGrep {
 
