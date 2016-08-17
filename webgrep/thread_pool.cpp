@@ -1,124 +1,105 @@
 #include "thread_pool.h"
 #include "linked_task.h"
+#include <list>
+#include <chrono>
 
 namespace WebGrep {
-//=============================================================================
-bool ThreadsPool::performSelfTest()
+struct Maker
 {
-  std::atomic_uint g_cnt;
-  g_cnt.store(0);
-
-  try {
-    ThreadsPool pool(4);
-    std::shared_ptr<WebGrep::LinkedTask> ltask;
-    ltask.reset(new WebGrep::LinkedTask,
-                [](void* ptr){WebGrep::DeleteList((WebGrep::LinkedTask*)ptr);}
-    );
-    size_t spawned = ltask->spawnNextNodes(99);
-
-    class LList : public std::enable_shared_from_this<LList>
-    {
-    public:
-      explicit LList(std::atomic_uint& ref, uint32_t i = 0) : idx(i)
-      {
-        dfunc.functor = [this, &ref](){ ;
-            std::cerr << "working item " << idx << std::endl;
-            ref.fetch_add(1);
-            throw std::logic_error("just checking reaction for fake error...");
-          };
-        dfunc.cbOnException = [this](const std::exception& ex)
-        {
-            std::cerr << "idx: " << idx << " " << ex.what() << std::endl;
-          };
-      }
-      uint32_t idx;
-      WebGrep::CallableDoubleFunc dfunc;
-      std::shared_ptr<LList> next;
-    };
-    std::shared_ptr<LList> head = std::make_shared<LList>(g_cnt, 0);
-    std::shared_ptr<LList> ptr = head;
-    uint32_t cnt = 0;
-    WebGrep::ForEachOnBranch(ltask.get(),
-                             [&ptr, &cnt, &g_cnt](LinkedTask*)
-    {
-        ptr->next = std::make_shared<LList>(g_cnt, ++cnt);
-        ptr = ptr->next;
-      }, 0);
-
-    ptr = head;
-
-    WebGrep::IteratorFunc_t ifunc = [&ptr](WebGrep::CallableDoubleFunc** pptr, size_t* pcnt) -> bool
-    {
-      (void)pcnt;
-      if (nullptr != ptr->next)
-        {
-          *pptr = &(ptr->dfunc);
-          ptr = ptr->next;
-          return true;
-        }
-      return false;
-    };
-    pool.submit(&(ptr->dfunc), 0, ifunc, false);
-    std::thread t([&pool](){pool.joinAll();});
-    t.join();
-  } catch(std::exception& ex)
+  Maker(const TPool_ThreadDataPtr& data) : pos(0), dataPtr(data)
   {
-    std::cerr << __FUNCTION__ << " test failed: " << ex.what() << std::endl;
-    return false;
+    localArray.reserve(32);
   }
+  ~Maker()
+  {
+    //
+    try {
+      //case we have to export abandoned tasks:
+      if (nullptr != dataPtr->exportTaskFn)
+        {
+          for(size_t k = pos; k < localArray.size(); ++k)
+            { dataPtr->exportTaskFn(localArray[k]); }
+          //move and export tasks that are left there:
+          std::unique_lock<std::mutex> lk(dataPtr->mu);
+          pull(dataPtr);
+          for(size_t k = 0; k < localArray.size(); ++k)
+            { dataPtr->exportTaskFn(localArray[k]); }
 
-  auto value = g_cnt.load();
-  return 101 == value;
+        } else if (!dataPtr->terminateFlag)
+        {//finish the jobs left there:
+          exec(dataPtr->terminateFlag);
+          std::unique_lock<std::mutex> lk(dataPtr->mu);
+          pull(dataPtr);
+          exec(dataPtr->terminateFlag);
+        }
+    } catch(std::exception& ex)
+    {
+      std::cerr << ex.what() << std::endl;
+    }
+
+  }
+  void pull(const TPool_ThreadDataPtr& td)
+  {
+    //move task queue to local array
+    localArray = std::move(td->workQ);
+    pos = 0;
+    td->workQ.clear();
+  }
+  void exec(volatile bool& term_flag)
+  {
+    size_t k = pos;
+    for(; k < localArray.size() && !term_flag; ++k)
+      {
+        CallableDoubleFunc& pair(localArray[k]);
+        try {
+          if (nullptr != pair.functor)
+            pair.functor();
+        }
+        catch(const std::exception& ex)
+        {
+          if (pair.cbOnException)
+            pair.cbOnException(ex);
+        }
+      }//for
+
+    pos = k;
+  }
+  TPool_ThreadDataPtr dataPtr;
+  size_t pos;//position
+  std::vector<CallableDoubleFunc> localArray;
+
+};
+
+void ThreadsPool_processingLoop(const TPool_ThreadDataPtr& td)
+{
+  Maker taskM(td);
+
+  while(!td->stopFlag)
+    {
+      std::unique_lock<std::mutex> lk(td->mu);
+      td->cond.wait(lk);
+      taskM.pull(td);
+      taskM.exec(td->terminateFlag);
+    }//while
+
+  //the dtor() will either execute or export unfinished jobs
 }
-//=============================================================================
+
 
 ThreadsPool::ThreadsPool(uint32_t nthreads)
   : d_closed(false)
 {
   threadsVec.resize(nthreads);
   mcVec.resize(nthreads);
+
   size_t idx = 0;
 
-  for(ThreadPtr& t : threadsVec)
+  for(std::thread& t : threadsVec)
     {
-      mcVec[idx] = std::make_shared<ThreadData>();
-      ThreadDataPtr data = mcVec[idx];
-      auto lamb = [data, this]()
-      {
-          this->processingLoop(data);
-      };//lambda
-
-      t = std::make_shared<std::thread>(lamb);
+      mcVec[idx] = std::make_shared<TPool_ThreadData>();
+      t = std::thread(ThreadsPool_processingLoop, mcVec[idx]);
       idx++;
     }
-}
-
-void ThreadsPool::processingLoop(const ThreadDataPtr& td)
-{
-  std::vector<CallableDoubleFunc> localArray;
-  localArray.reserve(32);
-
-  while(!td->stopFlag)
-    {
-      std::unique_lock<std::mutex> lk(td->mu);
-      td->cond.wait(lk);
-      //move task queue to local array to do not keep the mutex much
-      localArray = std::move(td->workQ);
-      lk.unlock();
-
-      for(CallableDoubleFunc& pair: localArray)
-        {
-          try {
-            if (nullptr != pair.functor)
-              pair.functor();
-          }
-          catch(const std::exception& ex)
-          {
-            if (pair.cbOnException)
-              pair.cbOnException(ex);
-          }
-        }//for
-    }//while
 }
 
 size_t ThreadsPool::threadsCount() const
@@ -130,7 +111,12 @@ bool ThreadsPool::closed() const
 {
     return d_closed;
 }
-
+bool ThreadsPool::submit(CallableDoubleFunc& ftor)
+{
+  if (closed())
+    return false;
+  return submit(&ftor, 1);
+}
 bool ThreadsPool::submit(const WebGrep::CallableFunc_t& ftor)
 {
   if (closed())
@@ -138,7 +124,7 @@ bool ThreadsPool::submit(const WebGrep::CallableFunc_t& ftor)
   CallableDoubleFunc pair;
   pair.functor = ftor;
   pair.cbOnException = [](const std::exception& ex)
-  { std::cerr << "Exception: " << ex.what() << std::endl;};
+  { std::cerr << "Exception suppressed: " << ex.what() << std::endl;};
   return submit(&pair, 1);
 }
 
@@ -147,22 +133,21 @@ bool ThreadsPool::submit(CallableDoubleFunc* ftorArray, size_t len, IteratorFunc
   if (closed())
     return false;
 
-  d_current.fetch_add(len, std::memory_order_acquire);
+  size_t inc = std::max((size_t)1, len);
+  d_current.fetch_add(inc, std::memory_order_acquire);
   unsigned idx = d_current.load(std::memory_order_relaxed) % threadsVec.size();
-  ;
 
   try {
     if (!spray)
       {//case we serialize tasks just to 1 thread
-        ThreadDataPtr& td(mcVec[idx]);
+        TPool_ThreadData* td = mcVec[idx].get();
         {
           std::unique_lock<std::mutex>lk(td->mu);
 
           CallableDoubleFunc* ptr = ftorArray;
-          size_t cnt = len - 1;
 
           bool ok = true;
-          for(; ok ; ok = iterFn(&ptr, &cnt))
+          for(size_t cnt = 0; ok; ok = iterFn(&ptr, &cnt, len))
             {
               td->workQ.push_back(*ptr);
             }
@@ -173,16 +158,18 @@ bool ThreadsPool::submit(CallableDoubleFunc* ftorArray, size_t len, IteratorFunc
 
     //case we serialize tasks to all threads (spraying them):
     CallableDoubleFunc* ptr = ftorArray;
-    size_t cnt = len - 1;
     bool ok = true;
-    for(; ok; ok = iterFn(&ptr, &cnt))
+    for(size_t cnt = 0; ok; ok = iterFn(&ptr, &cnt, len))
       {
-        ThreadDataPtr& td(mcVec[idx]);
+        TPool_ThreadData* td = mcVec[idx].get();
         {
           std::unique_lock<std::mutex>lk(td->mu);
+          (void)lk;
           td->workQ.push_back(*ptr);
         }
         td->cond.notify_all();
+        d_current.fetch_add(inc, std::memory_order_acquire);
+        idx = d_current.load(std::memory_order_relaxed) % threadsVec.size();
       }
   } catch(...)
   {
@@ -203,24 +190,44 @@ bool ThreadsPool::joined()
   return threadsVec.empty();
 }
 
-void ThreadsPool::joinAll()
+void ThreadsPool::joinAll(bool terminateCurrentTasks)
 {
   std::lock_guard<std::mutex> lk(joinMutex);
   if (threadsVec.empty())
     return;
 
   close();
-  for(ThreadDataPtr& dt : mcVec)
+  for(TPool_ThreadDataPtr& dt : mcVec)
     {
+      dt->terminateFlag = terminateCurrentTasks;
       dt->stopFlag = true;
       dt->cond.notify_all();
     }
-  for(ThreadPtr& t : threadsVec)
+
+  for(std::thread& t : threadsVec)
     {
-      t->join();
+      t.join();
     }
   threadsVec.clear();
   mcVec.clear();
+}
+
+void ThreadsPool::joinExportAll(std::function<void(CallableDoubleFunc&)>& exportFunctor)
+{
+  {//set the exporing callback
+    std::lock_guard<std::mutex> lk(joinMutex);
+    if (threadsVec.empty())
+      return;
+
+    close();
+    for(TPool_ThreadDataPtr& dt : mcVec)
+      {
+        dt->exportTaskFn = exportFunctor;
+        dt->stopFlag = true;
+      }
+  }
+  //terminate tasks, they'll export abandoned exec. functor
+  joinAll(true);
 }
 
 }//WebGrep

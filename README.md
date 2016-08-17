@@ -24,7 +24,7 @@ or in project/3rdparty subdirectory installed and pass the appropriate variable 
 Download CURL DLL distribution for MinGW from here https://bintray.com/artifact/download/vszakats/generic/curl-7.50.1-win32-mingw.7z
 Put the libcurl.dll.a into 3rdparty/lib and the headers to 3rdparty/include then compile the project.
 
-## CMake & Make
+## Project build: CMake & Make
 ```
 cd test03-v03
 mkdir build
@@ -40,6 +40,7 @@ Possible CMake options:
 -DUSE_LIBCURL         #use cURL (default on Windows)
 -DUSE_QTNETWORK       #dont use cURL or NEON but enable yet buggy experimental code where QtNetwork is used instead
 ```
+There are also unit tests' executables being build.
 
 ### Deployment on Windows: OpenSSL and Qt5
 Due to different licensing approach, Qt5 does not link to OpenSSL libraries,
@@ -88,6 +89,10 @@ then libneon/libcurl won't be needed ... but the program will fail to download t
 The algorithm and the GUI are, they need some testing.
 
 # Ideas
+There are 2 points:
++ test03-v03/webgrep subproject has pure C++11 STL code + external C libraries for HTTP(S), manual thread/callback management.
++ test03-v03/ Has Qt5 GUI with all it's fancy stuff like SLOTs/SIGNALs, although built with CMake, coz qmake syntax is dumb.
+
 The program has reduced to minimum use of explicitly defined sync. variables like mutual exclusions,
 we're syncronizing the tasks either using lock-free RAII ownership passing(shared pointers),
 and some volatile bool flags, the rest is taken by higher level task management entities: 
@@ -141,6 +146,12 @@ without inventing more and more types to describe events, methods to serialize t
 Whole parsing boiler plate (with boost::regex) is located in files "webgrep/crawler_worker.h[.cpp]",
 it also has methods that define the program flow: spawn new tasks until there is such need for the
 algorithm.
+
+The class WebGrep::ThreadsPool resambles is a thread manager that can dispatch std::function<void()>
+functors to be executed, it's functionality similar to boost::basic_thread_pool,
+which was used previously, but I decided to get rid of boost since only 1 class was used from there.
+Unlike boost, ThreadsPool allows one to get the abandoned tasks when the manager has been stopped
+and it's threads joined.
 
 # GUI and the algorithm
 Ideally, I could write some kind of adapter class instead of working with bare (LinkedTask\*) pointers,

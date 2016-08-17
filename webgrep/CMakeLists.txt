@@ -3,6 +3,7 @@ project(WebGrep)
 option(USE_LIBNEON "Compile using NEON https/webdav client library" OFF)
 option(USE_LIBCURL "Compile using cURL library" OFF)
 option(USE_QTNETWORK "Experimental: Compile using QtNetwork async i/o" OFF)
+option(DO_MEMADDR_SANITIZE "Option for GCC/Clang to sanitize memory access" OFF)
 # dependencies:
 # -pthread -lssl -lcrypto {-lneon OR -lcurl}
 
@@ -48,5 +49,10 @@ message("Linker will use ${NETW_LIB} for http.")
 
 add_library(webgrep SHARED ${src_wgrep}  ${NETW_SRC})
 target_compile_features(webgrep PUBLIC cxx_constexpr)
+if(DO_MEMADDR_SANITIZE)
+        add_definitions("-fsanitize=address")
+        target_link_libraries(webgrep -lasan)
+endif()
+
 target_link_libraries(webgrep -pthread -lssl -lcrypto ${NETW_LIB})
 

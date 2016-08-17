@@ -16,22 +16,38 @@ typedef std::function<void()> CallableFunc_t;
 /** encapsulates a callable and an exception callback.*/
 struct CallableDoubleFunc
 {
-  CallableDoubleFunc() { }
-  CallableDoubleFunc(const WebGrep::CallableFunc_t& f)
-    : functor(f) {}
-
   WebGrep::CallableFunc_t functor;
   std::function<void(const std::exception&)> cbOnException;
 };
 
 //iterator function type to iterate over array of functors for submission
-typedef std::function<bool(CallableDoubleFunc**, size_t*)> IteratorFunc_t;
+typedef std::function<bool(CallableDoubleFunc**, size_t*, size_t)> IteratorFunc_t;
 
-//simple array iteration functor:
-//on last element returns false and does not change the pointer.
-static bool PtrForwardIteration(CallableDoubleFunc** arrayPPtr, size_t* downCounter)
+struct TPool_ThreadData
 {
-  return 0 != *downCounter &&  ++(*arrayPPtr) &&  --(*downCounter);
+  TPool_ThreadData() : stopFlag(false), terminateFlag(false)
+  {
+    workQ.reserve(32);
+  }
+  std::mutex mu;
+  std::condition_variable cond;
+  volatile bool stopFlag;     //< tells to stop after finishing current tasks
+  volatile bool terminateFlag;//< tells to quite the loop ASAP
+  std::vector<CallableDoubleFunc> workQ;
+
+  //used to export abandoned tasks
+  std::function<void(CallableDoubleFunc&)> exportTaskFn;
+};
+typedef std::shared_ptr<std::thread> ThreadPtr;
+typedef std::shared_ptr<TPool_ThreadData> TPool_ThreadDataPtr;
+
+
+//simple array iteration function: increment a pointer and a counter
+//returns TRUE while last item is not reached
+static bool PtrForwardIteration(CallableDoubleFunc** arrayPPtr, size_t* counter, size_t maxValue)
+{
+  ++(*arrayPPtr);
+  return ++(*counter) < maxValue;
 }
 
 /** A thread pool that shedules tasks represented as functors,
@@ -49,17 +65,18 @@ class ThreadsPool : public WebGrep::noncopyable
 {
 public:
 
-  static bool performSelfTest();
-
   //can throw std::bad_alloc on when system has got no bytes for spare
   explicit ThreadsPool(uint32_t nthreads = 1);
-  virtual ~ThreadsPool() { joinAll(); }
+  virtual ~ThreadsPool() { close(); joinAll(); }
   size_t threadsCount() const;
 
   bool closed() const;
 
   //submit 1 task that has no cbOnException callback.
   bool submit(const WebGrep::CallableFunc_t& ftor);
+
+  //submit 1 task with cbOnException
+  bool submit(CallableDoubleFunc& ftor);
 
   /** Submit(len) tasks from array of data. A generalized interface
    *  to work with raw pointers or containers by providing iteration functor.
@@ -89,29 +106,22 @@ public:
 
   void close();  //< close the submission of tasks
 
-  void joinAll();//< sync by joinMutex.
-  bool joined(); //< sync by joinMutex.
+  /** Method is thread-safe, synchronized by this->joinMutex.
+   * @param terminateCurrentTasks: when FALSE it'll wait for current tasks to be procesed,
+   * if TRUE a termination flag will be set and it'll leave the scope ASAP. */
+  void joinAll(bool terminateCurrentTasks = false);
+
+  /** Terminates execution of tasks ASAP, exports abandoned task functors by given functor.
+   * Method is thread-safe.*/
+  void joinExportAll(std::function<void(CallableDoubleFunc&)>& exportFunctor);
+
+  bool joined(); //< synced by joinMutex.
 
 protected:
-  typedef std::shared_ptr<std::thread> ThreadPtr;
 
-  struct ThreadData
-  {
-    ThreadData() : stopFlag(false)
-    {
-      workQ.reserve(32);
-    }
-    std::mutex mu;
-    std::condition_variable cond;
-    bool stopFlag;
-    std::vector<CallableDoubleFunc> workQ;
-  };
-  typedef std::shared_ptr<ThreadData> ThreadDataPtr;
 
-  virtual void processingLoop(const ThreadDataPtr& td);
-
-  std::vector<ThreadPtr> threadsVec;
-  std::vector<ThreadDataPtr> mcVec;
+  std::vector<std::thread> threadsVec;
+  std::vector<TPool_ThreadDataPtr> mcVec;
   std::atomic_uint d_current;
   volatile bool d_closed;
 

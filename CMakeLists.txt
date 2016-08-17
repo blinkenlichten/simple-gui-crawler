@@ -37,14 +37,24 @@ if(USE_QTNETWORK)
 
 	file(GLOB src_webgrep webgrep)
 	add_executable(webgrepGUI ${src_ui} ${src_wgrep} ${src_wgrep_qt})
+        if(DO_MEMADDR_SANITIZE)
+            add_definitions("-fsanitize=address")
+        target_link_libraries(webgrepGUI -lasan)
+        endif()
+
         target_compile_features(webgrepGUI PUBLIC cxx_constexpr)
 	target_link_libraries(webgrepGUI Qt5::Network Qt5::Widgets)
 else()
 #using libneon, compiling against static libwebgrep
 	add_subdirectory(webgrep)
 	add_executable(webgrepGUI ${src_ui})
+        if(DO_MEMADDR_SANITIZE)
+            add_definitions("-fsanitize=address")
+            target_link_libraries(webgrepGUI -lasan)
+        endif()
         target_compile_features(webgrepGUI PUBLIC cxx_constexpr)
 	target_link_libraries(webgrepGUI Qt5::Widgets Qt5::Gui webgrep)
 endif()
 
+add_subdirectory(unit_tests/test_ThreadPool)
 
