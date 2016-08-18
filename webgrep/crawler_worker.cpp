@@ -179,7 +179,8 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   rq.ctx->status = rq.res;
   g.pageContent = std::move(rq.ctx->response);
   g.pageIsReady = (rq.res == CURLE_OK);
-  curl_easy_cleanup(rq.ctx->curl);
+  //reset the CURL state:
+  w.httpClient = WebGrep::Client();
 
 
 
@@ -395,7 +396,8 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w)
   if (nullptr != w.childLevelSpawned)
     { w.childLevelSpawned(child); }
 
-  //start subtasks in different threads:
+  //call self by sending tasks calling this method to different threads
+  //(tasks ventillation)
   std::cerr << __FUNCTION__ << " scheduling " << n_subtasks << " tasks more.\n";
   w.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 1);
   return true;

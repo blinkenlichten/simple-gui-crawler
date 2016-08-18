@@ -38,7 +38,7 @@ public:
   bool start(const std::string& url, const std::string& grepRegex,
              unsigned maxLinks = 4096, unsigned threadsNum = 4);
 
-  /** Halts the html pages crawler.
+  /** Halts the html pages crawler for a while.
    *  Use clear() to clear the search results totally.*/
   void stop();
 
@@ -50,7 +50,8 @@ public:
   typedef std::function<void(const std::string& what)> OnExceptionCallback_t;
 
   /** The functor type describes access no newly spawned tree node(one for each page)
-  the (LinkedTask*) can be read concurrently under some circumstances (see it's doc)*/
+  the (LinkedTask*) can be read concurrently under some circumstances (see it's doc).
+  The pointer (LinkedTask*)node is valied until std::shared_ptr<LinkedTask> rootNode exists. */
   typedef std::function<void(std::shared_ptr<LinkedTask> rootNode, LinkedTask* node)> OnPageScannedCallback_t;
 
   void setExceptionCB(OnExceptionCallback_t func);

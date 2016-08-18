@@ -2,10 +2,10 @@
 #define WIDGET_H
 
 #include <QWidget>
+#include <map>
 #include <QTextEdit>
-#include <QListWidgetItem>
+#include <QTreeWidgetItem>
 #include <memory>
-#include "boost/smart_ptr/detail/spinlock.hpp"
 
 class QTimer;
 
@@ -34,15 +34,22 @@ public:
 
   typedef std::function<void()> Functor_t;
 
+  //make information string about the node
+  static void describe(QString& str, WebGrep::LinkedTask* node);
+
 public slots:
   // check provided GUI arguments and start the crawler
   void onStart();
+
+  // stop/pause the crawler
+  void onStop();
 
   // render + display hint
   void paintEvent(QPaintEvent *event);
 
   //selecting parsed page displays it's .html content
-  void onList2Clicked(QListWidgetItem* item);
+  void onItemClicked(QTreeWidgetItem *item, int column);
+
 
   //invoked by the parser on each page grep finished
   void onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode,
@@ -58,7 +65,7 @@ private slots:
   void onHelpClicked();
 
 private:
-  void populateListsFunction(WebGrep::LinkedTask* head, void*);
+//  void populateListsFunction(WebGrep::LinkedTask* head, void*);
 
   void print(WebGrep::LinkedTask* head, void*);
 
@@ -73,6 +80,18 @@ private:
 
   //stores all downloaded pages and match results in a linked list
   std::shared_ptr<WebGrep::LinkedTask> mainNode;
+
+  struct WidgetConn
+  {
+    WidgetConn() : node(nullptr), widget(nullptr)
+    { }
+    std::shared_ptr<WebGrep::LinkedTask> rootTask;
+    WebGrep::LinkedTask* node;
+    QTreeWidgetItem* widget;
+  };
+
+  std::map<WebGrep::LinkedTask*, WidgetConn> taskWidgetsMap;
+  std::map<QTreeWidgetItem*, WebGrep::LinkedTask*> widgetsTaskMap;
 
 };
 

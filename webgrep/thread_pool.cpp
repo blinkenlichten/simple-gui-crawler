@@ -79,10 +79,23 @@ void ThreadsPool_processingLoop(const TPool_ThreadDataPtr& td)
       std::unique_lock<std::mutex> lk(td->mu);
       td->cond.wait(lk);
       taskM.pull(td);
+      lk.unlock();
+
       taskM.exec(td->terminateFlag);
     }//while
 
   //the dtor() will either execute or export unfinished jobs
+}
+
+bool PtrForwardIterationDbl(WebGrep::CallableDoubleFunc** arrayPPtr, size_t* counter, size_t maxValue)
+{
+  ++(*arrayPPtr);
+  return ++(*counter) < maxValue;
+}
+bool PtrForwardIteration(WebGrep::CallableFunc_t** arrayPPtr, size_t* counter, size_t maxValue)
+{
+  ++(*arrayPPtr);
+  return ++(*counter) < maxValue;
 }
 
 
@@ -128,7 +141,8 @@ bool ThreadsPool::submit(const WebGrep::CallableFunc_t& ftor)
   return submit(&pair, 1);
 }
 
-bool ThreadsPool::submit(CallableDoubleFunc* ftorArray, size_t len, IteratorFunc_t iterFn, bool spray)
+bool ThreadsPool::submit(CallableDoubleFunc* ftorArray, size_t len,
+                         IteratorFunc2_t iterFn, bool spray)
 {
   if (closed())
     return false;
@@ -178,6 +192,64 @@ bool ThreadsPool::submit(CallableDoubleFunc* ftorArray, size_t len, IteratorFunc
 
   return true;
 }
+//-----------------------------------------------------------------------------
+bool ThreadsPool::submit(WebGrep::CallableFunc_t* ftorArray, size_t len,
+                         IteratorFunc_t iterFn, bool spray)
+{
+  if (closed())
+    return false;
+
+  size_t inc = std::max((size_t)1, len);
+  d_current.fetch_add(inc, std::memory_order_acquire);
+  unsigned idx = d_current.load(std::memory_order_relaxed) % threadsVec.size();
+
+  try {
+    if (!spray)
+      {//case we serialize tasks just to 1 thread
+        TPool_ThreadData* td = mcVec[idx].get();
+        {
+          std::unique_lock<std::mutex>lk(td->mu);
+
+          WebGrep::CallableFunc_t* ptr = ftorArray;
+          WebGrep::CallableDoubleFunc dfunc;
+
+          bool ok = true;
+          for(size_t cnt = 0; ok; ok = iterFn(&ptr, &cnt, len))
+            {
+              dfunc.functor = *ptr;
+              td->workQ.push_back(dfunc);
+            }
+        }
+        td->cond.notify_all();
+        return true;
+      }
+
+    //case we serialize tasks to all threads (spraying them):
+    CallableFunc_t* ptr = ftorArray;
+    WebGrep::CallableDoubleFunc dfunc;
+
+    bool ok = true;
+    for(size_t cnt = 0; ok; ok = iterFn(&ptr, &cnt, len))
+      {
+        TPool_ThreadData* td = mcVec[idx].get();
+        {
+          std::unique_lock<std::mutex>lk(td->mu);
+          (void)lk;
+          dfunc.functor = *ptr;
+          td->workQ.push_back(dfunc);
+        }
+        td->cond.notify_all();
+        d_current.fetch_add(inc, std::memory_order_acquire);
+        idx = d_current.load(std::memory_order_relaxed) % threadsVec.size();
+      }
+  } catch(...)
+  {
+    return false;//on exception like bad_alloc
+  }
+
+  return true;
+}
+
 
 void ThreadsPool::close()
 {
@@ -193,8 +265,6 @@ bool ThreadsPool::joined()
 void ThreadsPool::joinAll(bool terminateCurrentTasks)
 {
   std::lock_guard<std::mutex> lk(joinMutex);
-  if (threadsVec.empty())
-    return;
 
   close();
   for(TPool_ThreadDataPtr& dt : mcVec)
@@ -207,6 +277,23 @@ void ThreadsPool::joinAll(bool terminateCurrentTasks)
   for(std::thread& t : threadsVec)
     {
       t.join();
+    }
+  threadsVec.clear();
+  mcVec.clear();
+}
+
+void ThreadsPool::terminateDetach()
+{
+  std::lock_guard<std::mutex> lk(joinMutex);
+  close();
+  for(std::thread& t : threadsVec)
+    { t.detach(); }
+
+  for(TPool_ThreadDataPtr& dt : mcVec)
+    {
+      dt->terminateFlag = true;
+      dt->stopFlag = true;
+      dt->cond.notify_all();
     }
   threadsVec.clear();
   mcVec.clear();

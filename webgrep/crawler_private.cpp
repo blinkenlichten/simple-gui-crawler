@@ -25,39 +25,93 @@ bool CrawlerPV::selfTest() const
   return true;
 }
 //--------------------------------------------------------------
-void CrawlerPV::start()
+void CrawlerPV::start(std::shared_ptr<LinkedTask> neuRootTask, unsigned threadsNumber, bool forceRebuild)
 {
-  auto root = taskRoot;
+  if (neuRootTask.get() != taskRoot.get())
+    {//stop ASAP with tasks termination
+      workersPool->terminateDetach();
+    }
+  else
+    {//stop temporarly, with tasks re-sheduling
+      stop();
+    }
+
+  //set up workersPool if needed.
+  if (workersPool->closed() || workersPool->threadsCount() != threadsNumber)
+    {
+      workersPool.reset(new WebGrep::ThreadsPool(threadsNumber));
+    }
+
+  if(taskRoot == neuRootTask)
+  { //submit previously abandoned tasks due to stop()
+    std::lock_guard<std::mutex> lk(slockLonelyFunctors); (void)lk;
+    if (!lonelyFunctorsVector.empty())
+      {
+        workersPool->submit(&lonelyFunctorsVector[0], lonelyFunctorsVector.size());
+      }
+  }
+
+  taskRoot = neuRootTask;
+
   WorkerCtx worker = makeWorkerContext();
-
+  if (taskRoot->grepVars.pageIsParsed && !forceRebuild)
+    { //do not re-parse everything if it's ready unless forced to
+      return;
+    }
+  //Start parsing the first(root's) URL
   //this functor will wake-up pending task from another thread
-  FuncGrepOne(root.get(), worker);
+  FuncGrepOne(taskRoot.get(), worker);
   LinkedTask* expell = nullptr;
-  LinkedTask* child = root->spawnChildNode(expell); DeleteList(expell);
-  size_t spawnedCnt = child->spawnGreppedSubtasks(worker.hostPort, root->grepVars, 0);
-  std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
 
-  //ventillate subtasks:
+  //make a child node for new sequence of pages for download/grep
+  LinkedTask* child = taskRoot->spawnChildNode(expell); DeleteList(expell);
+  size_t spawnedCnt = child->spawnGreppedSubtasks(worker.hostPort, taskRoot->grepVars, 0);
+  std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
+  worker.childLevelSpawned(child);
+  //we have grepped N URLs from the first page
+  //ventillate them as subtasks:
   worker.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 0 );
 
 }
 //--------------------------------------------------------------
-void CrawlerPV::stopThreads()
+void CrawlerPV::stop()
 {
-  stop();
-  workersPool->close();
-  auto workersCopy = workersPool;
+  auto this_shared = shared_from_this();
 
-  std::thread waiter([this, workersCopy](){
+  std::function<void(WebGrep::CallableDoubleFunc&)> exportFn =
+      [this,this_shared](WebGrep::CallableDoubleFunc& dfunc)
+  {
+      std::lock_guard<std::mutex> lk(this_shared->slockLonelyFunctors);
+      (void)lk;
+      this_shared->lonelyFunctorsVector.push_back(dfunc.functor);
+  };
+  //terminate the tasks manager and export abandoned tasks here:
+  auto workersCopy = workersPool;
+  std::thread waiter([this, this_shared, workersCopy, &exportFn](){
       if (nullptr == workersCopy)
         { return; }
       try {
-        workersCopy->joinAll();
+        workersCopy->joinExportAll(exportFn);
       } catch(...)
       { std::cerr << "Error! Failed to join workers thread!\n";
       }
     });
   waiter.detach();
+
+
+}
+//--------------------------------------------------------------
+void CrawlerPV::clear()
+{
+  stop();
+  taskRoot.reset();
+  currentLinksCount->store(0);
+  {
+    std::lock_guard<std::mutex> lk(slockLonely);
+    lonelyVector.clear();
+  }
+  std::lock_guard<std::mutex>lk(slockLonelyFunctors);
+  lonelyFunctorsVector.clear();
 }
 //---------------------------------------------------------------
 WorkerCtx CrawlerPV::makeWorkerContext()
@@ -72,11 +126,18 @@ WorkerCtx CrawlerPV::makeWorkerContext()
     if (crawlerImpl->onPageScanned)
       crawlerImpl->onPageScanned(crawlerImpl->taskRoot, node);
   };
+
+  ctx.childLevelSpawned = ctx.pageMatchFinishedCb;
+
   ctx.sheduleTask = [crawlerImpl](const LonelyTask* task)
-  { crawlerImpl->sheduleTask(*task); };
+  {
+      crawlerImpl->sheduleTask(*task);
+  };
 
   ctx.sheduleFunctor = [crawlerImpl](CallableFunc_t func)
-  { crawlerImpl->sheduleFunctor(func);};
+  {
+    crawlerImpl->sheduleFunctor(func);
+  };
   return ctx;
 }
 //---------------------------------------------------------------

@@ -59,7 +59,8 @@ void TraverseFunctor(LinkedTask* head, void* additional,
 // Free memory recursively. NOT THREAD SAFE! Must be syncronized.
 void DeleteList(LinkedTask* head);
 
-/** Apply functor for each item on same branch accessed by(head->next)
+/** Apply functor for each item on same branch accessed by(head->next).
+ * Any exceptions from the functor will be catched and printed to std::cerr.
  * @return how much times functor has been invoked.
  */
 size_t ForEachOnBranch(LinkedTask* head, std::function<void(LinkedTask*)> functor, uint32_t skipCount = 0);

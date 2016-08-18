@@ -39,32 +39,36 @@ bool Crawler::start(const std::string& url,
   //----------------------------------------------------------------
   //----------------------------------------------------------------
 
-  std::shared_ptr<LinkedTask>& root(pv->taskRoot);
+  std::shared_ptr<LinkedTask> mainTask;
 
   try {
-    stop();
     setMaxLinks(maxLinks);
-    setThreadsNumber(threadsNum);
-    if (nullptr == root || root->grepVars.targetUrl != url)
+    if (nullptr == pv->taskRoot || pv->taskRoot->grepVars.targetUrl != url)
       {
-        pv->taskRoot = nullptr;
         //alloc toplevel node:
-        root.reset(new LinkedTask,
-                   [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
+        mainTask.reset(new LinkedTask,
+                       [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
 
         pv->currentLinksCount->store(0);
-        root->linksCounterPtr = (pv->currentLinksCount);
-        root->maxLinksCountPtr = (pv->maxLinksCount);
+        mainTask->linksCounterPtr = (pv->currentLinksCount);
+        mainTask->maxLinksCountPtr = (pv->maxLinksCount);
+      }
+    else
+      {
+        mainTask = pv->taskRoot;
       }
 
-    GrepVars* g = &(root->grepVars);
+    GrepVars* g = &(mainTask->grepVars);
     g->targetUrl = url;
     g->grepExpr = grepRegex;
 
     //submit a root-task:
     //get the first page and then follow it's content's links in new threads.
-    //It is done async. to avoid GUI lags etc.
-    pv->sheduleFunctor([crawlerImpl](){ crawlerImpl->start(); });
+    //It is to be done async. to avoid GUI lags etc.
+    pv->workersPool->submit([crawlerImpl, threadsNum, mainTask]()
+    { /*async start.*/
+        crawlerImpl->start(mainTask, threadsNum);
+    });
   } catch(const std::exception& ex)
   {
     std::cerr << ex.what() << "\n";
@@ -94,15 +98,12 @@ void Crawler::setThreadsNumber(unsigned nthreads)
       return;
     }
   try {
-    pv->stopThreads();
-    pv->workersPool.reset(new WebGrep::ThreadsPool(nthreads));
+    pv->start(pv->taskRoot, nthreads);
 
   } catch(const std::exception& ex)
   {
     std::cerr << ex.what() << std::endl;
-    if(pv->onException) {
-      pv->onException(ex.what());
-    }
+    if(pv->onException) { pv->onException(ex.what()); }
   }
  }
 //---------------------------------------------------------------

@@ -124,7 +124,14 @@ std::string Client::connect(const std::string& httpURL)
   if (colpos < 4 || colpos > 5)
     return std::string();
 
-  ctx = std::make_shared<ClientCtx>();
+  if(nullptr == ctx)
+    {
+      ctx = std::make_shared<ClientCtx>();
+    }
+  else
+    {
+      curl_easy_reset(ctx->curl);
+    }
   ::memcpy(ctx->scheme.data(), httpURL.data(), colpos);
 
   for(unsigned c = 0; c < 5; ++c)

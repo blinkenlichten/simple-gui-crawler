@@ -136,22 +136,57 @@ Main idea is to use RAII for top-level objects that operate and communecate via
 with smaller objects and functors,
 that is mostly enque/deque and sequential functor execution.
 
-The class Crawler in "webgrep/crawler.h[.cpp]" works with the list using boost::basic_threadpool
-by pushing a functor objects in it and providing the results in a callbacks.
+The data structure and it's creation process scheme is:
+```
+    CrawlerPV::start() gets the input URL and downloads 1 HTML page using WebGrep::FuncGrepOne.
+    It will spawn a root node with root.grepVars.targetURL="https://mit.edu" (for example)
+    root.grepVars.matchURLVector will contain std::string iterators that point to HTML page contents
+    std::string in root.grepVars.pageContent.
+    Then it will create 1 child node at root->child
+    with child.grepVars.targetURL={URL1 from the page, e.g. root.grepVars.matchURLVector[0]}.
+    Then it will spaw consequent nodes at child->next from next matched URLs in range root.grepVars.matchURLVector[1, size()-1]. Now when we have spawned top level of the tree, we call WebGrep::FuncDownloadRecursive() on each top level
+    node, the method will run nodes' parsing concurrently using the WebGrep::ThreadsPool class.
+
+    [root(first URL)]
+          |
+          | {grep page and get array of matched URLs into root.grepVars.matchURLVector}
+          | {spawn 1 child with URL1}
+          | {spawn a chain of new nodes attached to child with URL1 using
+          |  size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const GrepVars&, size_t);}
+          |
+          +--> [child(URL1)]-->[child->next (URL2)]-->[next->next (URL3)]
+                    |                   |
+                    |                   +-[child2->child{URL2.1}]-----[URL{2.K}]
+                    |
+                    | {recursive call to bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w)
+                    |  for each node spaws new subtasks that create new child nodes.
+                    |
+                [child->child{URL1.1}]---[URL{1.2}]--... [URL{1.M}]
+```
+
+## Components
+
++ The class Crawler in "webgrep/crawler.h[.cpp]" works with the list of tasks
+using a thread manager like the boost::basic_threadpool,for example,
+it's pushing a functor objects in it and providing the results in a callbacks.
 This is kind of transactional ways of calling routines.
 It is hard to write it the right way from first try,
 but as a result you get a versatile task distribution system
 without inventing more and more types to describe events, methods to serialize them etc.
 
-Whole parsing boiler plate (with boost::regex) is located in files "webgrep/crawler_worker.h[.cpp]",
++ Whole parsing boiler plate (with boost::regex) is located in files "webgrep/crawler_worker.h[.cpp]",
 it also has methods that define the program flow: spawn new tasks until there is such need for the
 algorithm.
 
-The class WebGrep::ThreadsPool resambles is a thread manager that can dispatch std::function<void()>
++ The class WebGrep::ThreadsPool resambles is a thread manager that can dispatch std::function<void()>
 functors to be executed, it's functionality similar to boost::basic_thread_pool,
 which was used previously, but I decided to get rid of boost since only 1 class was used from there.
 Unlike boost, ThreadsPool allows one to get the abandoned tasks when the manager has been stopped
 and it's threads joined.
+
++ The class WebGrep::Client is intended to make a GET requests to the remote hosts
+via HTTP(S), it encapsulates 3 possible HTTP client "engines" under the hood:
+NEON, cURL, QtNetwork::QNetworkAccessManager. They're switched by CMake options.
 
 # GUI and the algorithm
 Ideally, I could write some kind of adapter class instead of working with bare (LinkedTask\*) pointers,

@@ -21,7 +21,8 @@ struct CallableDoubleFunc
 };
 
 //iterator function type to iterate over array of functors for submission
-typedef std::function<bool(CallableDoubleFunc**, size_t*, size_t)> IteratorFunc_t;
+typedef std::function<bool(CallableFunc_t**, size_t*, size_t)> IteratorFunc_t;
+typedef std::function<bool(CallableDoubleFunc**, size_t*, size_t)> IteratorFunc2_t;
 
 struct TPool_ThreadData
 {
@@ -42,13 +43,12 @@ typedef std::shared_ptr<std::thread> ThreadPtr;
 typedef std::shared_ptr<TPool_ThreadData> TPool_ThreadDataPtr;
 
 
-//simple array iteration function: increment a pointer and a counter
+//simple(default) array iteration function: increment a pointer and a counter
 //returns TRUE while last item is not reached
-static bool PtrForwardIteration(CallableDoubleFunc** arrayPPtr, size_t* counter, size_t maxValue)
-{
-  ++(*arrayPPtr);
-  return ++(*counter) < maxValue;
-}
+bool PtrForwardIterationDbl(WebGrep::CallableDoubleFunc** arrayPPtr, size_t* counter, size_t maxValue);
+//same as above, but for function<void()> type
+bool PtrForwardIteration(WebGrep::CallableFunc_t** arrayPPtr, size_t* counter, size_t maxValue);
+
 
 /** A thread pool that shedules tasks represented as functors,
  *  similar to boost::basic_thread_pool.
@@ -56,6 +56,10 @@ static bool PtrForwardIteration(CallableDoubleFunc** arrayPPtr, size_t* counter,
  *
  *  The destructor will join the threads,
  *  if you want it to happen earlier or in separate thread -- call joinAll() manually.
+ *  There are 2 possible ways of thread joining: joinAll() will wait for the tasks to finish,
+ *  joinAll(true) will terminate ASAP and make the pool to abandon tasks left in the queue;
+ *  joinExportAll(functor) will terminate ASAP but with invocation of a functor that can
+ *  pass abandoned tasks from the queue to where ever you'll pass it, the functor must be thread-safe!
  *
  *  To control exceptions raised from execution of the functor
  *  the user must set CallableDoubleFunc.cbOnException callbacks for each task during submission
@@ -75,7 +79,7 @@ public:
   //submit 1 task that has no cbOnException callback.
   bool submit(const WebGrep::CallableFunc_t& ftor);
 
-  //submit 1 task with cbOnException
+  //submit 1 task with cbOnException callback
   bool submit(CallableDoubleFunc& ftor);
 
   /** Submit(len) tasks from array of data. A generalized interface
@@ -88,7 +92,7 @@ public:
    *  LList* list_head = new LList;//fill the linked list with N elements
    *  ThreadsPool thp(10);
    *
-   *  auto iterFunc = [](const CallableDoubleFunc** list, size_t* dcount) -> bool
+   *  auto iterFunc = [](const CallableDoubleFunc** list, size_t*,size_t) -> bool
    *  {//iterate over linked list
    *    (void)dcount;//unused
    *    *list = list->next;
@@ -100,9 +104,18 @@ public:
    *  @param ftorArray: plain array or linked list's head pointer.
    *  @param len: count of elements
    *  @param iterFn: functor to be called after each pointer dereference
+   *  @param spray: case TRUE -- spread the tasks between all pool's threads,
+   *  case FALSE -- it will push the tasks to just one thread's task queue.
+   *  FALSE option is useful for consequent/dependent tasks.
 */
   bool submit(CallableDoubleFunc* ftorArray, size_t len,
+              IteratorFunc2_t iterFn = PtrForwardIterationDbl, bool spray = true);
+
+  /** same as submit(CallableDoubleFunc* ftorArray, size_t ..)
+   *  but for functors without exception control (they're catched and ignored)*/
+  bool submit(WebGrep::CallableFunc_t* ftorArray, size_t len,
               IteratorFunc_t iterFn = PtrForwardIteration, bool spray = true);
+
 
   void close();  //< close the submission of tasks
 
@@ -110,6 +123,9 @@ public:
    * @param terminateCurrentTasks: when FALSE it'll wait for current tasks to be procesed,
    * if TRUE a termination flag will be set and it'll leave the scope ASAP. */
   void joinAll(bool terminateCurrentTasks = false);
+
+  /** Notify all threads to stop, but do not join(), detach() instead.*/
+  void terminateDetach();
 
   /** Terminates execution of tasks ASAP, exports abandoned task functors by given functor.
    * Method is thread-safe.*/

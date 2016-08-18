@@ -98,7 +98,7 @@ bool test1()
     std::shared_ptr<WebGrep::LinkedTask> ltask;
     size_t spawned;
     //functor that works as iterator on head->dfunc tasks within the linked list
-    WebGrep::IteratorFunc_t ifunc;
+    WebGrep::IteratorFunc2_t ifunc;
     std::shared_ptr<LList> head, list_cur_ptr;
   };
 

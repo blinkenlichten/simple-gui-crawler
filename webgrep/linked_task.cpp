@@ -145,10 +145,15 @@ size_t ForEachOnBranch(LinkedTask* head, std::function<void(LinkedTask*)> functo
 
   //process the elements with the functor:
   size_t cnt = 0;
+  try {
   for(; nullptr != item; ++cnt, item = ItemLoadAcquire(item->next))
     {
       functor(item);
     }
+  } catch(std::exception& ex)
+  {
+    std::cerr << __FUNCTION__ << " exception: " << ex.what() << std::endl;
+  }
   return cnt;
 }
 
@@ -190,7 +195,7 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
   };
 
   //spawn N items (leafs) on current branch
-  size_t spawnedListSize = spawnNextNodes(targetVariables.matchURLVector.size());
+  size_t spawnedListSize = spawnNextNodes(targetVariables.matchURLVector.size()-1/*exclude this*/);
   //for each leaf: configure it with target URL:
   size_t cnt = ForEachOnBranch(this, func, skipCount);
   linksCounterPtr->fetch_add(cnt);

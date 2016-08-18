@@ -166,19 +166,6 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="buttonPause">
-          <property name="maximumSize">
-           <size>
-            <width>120</width>
-            <height>40</height>
-           </size>
-          </property>
-          <property name="text">
-           <string>Pause</string>
-          </property>
-         </widget>
-        </item>
-        <item>
          <widget class="QPushButton" name="buttonStop">
           <property name="maximumSize">
            <size>
@@ -323,7 +310,7 @@
          </size>
         </property>
         <property name="currentIndex">
-         <number>2</number>
+         <number>0</number>
         </property>
         <widget class="QWidget" name="foundTextTab">
          <attribute name="title">
@@ -340,16 +327,6 @@
           </property>
           <layout class="QVBoxLayout" name="listVerticalLayout_2">
            <item>
-            <widget class="QLabel" name="label">
-             <property name="text">
-              <string>Pending tasks:</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QListWidget" name="listWidgetPending"/>
-           </item>
-           <item>
             <widget class="QLabel" name="label_3">
              <property name="text">
               <string>Scanned pages(double click to display):</string>
@@ -357,7 +334,13 @@
             </widget>
            </item>
            <item>
-            <widget class="QListWidget" name="listWidgetReady"/>
+            <widget class="QTreeWidget" name="treeWidget">
+             <column>
+              <property name="text">
+               <string notr="true">1</string>
+              </property>
+             </column>
+            </widget>
            </item>
           </layout>
          </widget>
