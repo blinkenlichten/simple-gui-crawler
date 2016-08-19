@@ -56,6 +56,7 @@ public:
 
   void setExceptionCB(OnExceptionCallback_t func);
   void setPageScannedCB(OnPageScannedCallback_t func);
+  void setLevelSpawnedCB(OnPageScannedCallback_t func);
 
 private:
   std::shared_ptr<CrawlerPV> pv;

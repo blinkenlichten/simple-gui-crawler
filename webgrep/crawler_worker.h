@@ -72,7 +72,7 @@ struct WorkerCtx
   /** Invoked on each page parsed.*/
   std::function<void(LinkedTask*)> pageMatchFinishedCb;
 
-  /** Invoked when a new level of child nodes has spawned, */
+  /** Invoked when a new level of child nodes has spawned, e.g. a sequence of pages to be parsed. */
   std::function<void(LinkedTask*)> childLevelSpawned;
 
   //some utilities as methods:

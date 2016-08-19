@@ -15,6 +15,11 @@ void Crawler::setPageScannedCB(OnPageScannedCallback_t func)
   pv->onPageScanned = func;
 }
 
+void Crawler::setLevelSpawnedCB(OnPageScannedCallback_t func)
+{
+  pv->onLevelSpawned = func;
+}
+
 Crawler::Crawler()
 {
   pv = std::make_shared<CrawlerPV>();
@@ -65,10 +70,12 @@ bool Crawler::start(const std::string& url,
     //submit a root-task:
     //get the first page and then follow it's content's links in new threads.
     //It is to be done async. to avoid GUI lags etc.
-    pv->workersPool->submit([crawlerImpl, threadsNum, mainTask]()
+    std::thread launcher(
+          [crawlerImpl, threadsNum, mainTask]()
     { /*async start.*/
         crawlerImpl->start(mainTask, threadsNum);
-    });
+    } );
+    launcher.detach();
   } catch(const std::exception& ex)
   {
     std::cerr << ex.what() << "\n";

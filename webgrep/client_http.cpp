@@ -128,10 +128,7 @@ std::string Client::connect(const std::string& httpURL)
     {
       ctx = std::make_shared<ClientCtx>();
     }
-  else
-    {
-      curl_easy_reset(ctx->curl);
-    }
+  ctx->scheme.fill(0x00);
   ::memcpy(ctx->scheme.data(), httpURL.data(), colpos);
 
   for(unsigned c = 0; c < 5; ++c)
@@ -156,7 +153,6 @@ std::string Client::connect(const std::string& httpURL)
       ctx->host_and_port.append(temp.data());
     }
 
-  curl_easy_setopt(ctx->curl,CURLOPT_USERAGENT, "libcurl");
   return ctx->host_and_port;
 }
 
@@ -189,15 +185,23 @@ WebGrep::IssuedRequest Client::issueRequest(const char* method, const char* path
   url += ctx->host_and_port;
   url += path;
 
+  IssuedRequest out;
+  ::memcpy(out.method.data(), method, std::min((size_t)4, ::strlen(method)));
+  out.ctx = this->ctx;
+  out.responseStringPtr = &(ctx->response);
+
+  ctx->curl = curl_easy_init();
+  if(nullptr == ctx->curl)
+    { return out; }
+
+  ctx->response.clear();
+  curl_easy_setopt(ctx->curl,CURLOPT_USERAGENT, "cURL-7");
+
   curl_easy_setopt(ctx->curl,CURLOPT_URL, url.data());
   curl_easy_setopt(ctx->curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(ctx->curl, CURLOPT_WRITEFUNCTION, d_curl_write_callback);
   curl_easy_setopt(ctx->curl, CURLOPT_WRITEDATA, (void*)ctx.get());
-  ctx->response.clear();
-  IssuedRequest out;
-  out.responseStringPtr = &(ctx->response);
-  ::memcpy(out.method.data(), method, std::min((size_t)4, ::strlen(method)));
-  out.ctx = this->ctx;
+  curl_easy_setopt(ctx->curl, CURLOPT_TIMEOUT, 2/*seconds*/);
   return out;
 }
 

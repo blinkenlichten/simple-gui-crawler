@@ -210,11 +210,14 @@ bool test3()
   }
 
   //task export functor:
-  std::function<void(CallableDoubleFunc&)> taskSavior = [&tasksLeft](CallableDoubleFunc& abandonedTask)
+  std::function<void(CallableDoubleFunc*, size_t)> taskSavior = [&tasksLeft](CallableDoubleFunc* abandonedTasksArray, size_t len)
   {
     static std::mutex vectorLock;
     std::lock_guard<std::mutex> lk(vectorLock); (void)lk;
-    tasksLeft.push_back(abandonedTask);
+    for(size_t c = 0; c < len; ++c)
+      {
+        tasksLeft.push_back(abandonedTasksArray[c]);
+      }
   };
   pool.joinExportAll(taskSavior);
 

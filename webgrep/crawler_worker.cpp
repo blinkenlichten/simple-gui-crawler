@@ -15,11 +15,11 @@ bool CheckExtension(const char* buf, unsigned len)
   static const char* d_file_extensions[ ] = {
       ".js",  ".jpg", "jpeg", ".mp4", "mpeg", ".avi",
       ".mkv", "rtmp", ".mov", ".3gp", ".wav", ".mp3",
-      ".doc", ".odt", ".pdf", ".gif", ".ogv", ".ogg"
+      ".doc", ".odt", ".pdf", ".gif", ".ogv", ".ogg", "\0\0\0\0"
     };
   //interesting files:
   static const char* d_extensions[ ]
-      = {"html", ".htm", ".asp", ".jsp", ".php", ".rb", ".prl", ".py"};
+      = {"html", ".htm", ".asp", ".jsp", ".php", ".rb", ".prl", ".py", "\0"};
   const char* last4 = buf + len - 4;
 
   //since we have only 4 bytes there, lets compare them as uint32_t
@@ -27,7 +27,8 @@ bool CheckExtension(const char* buf, unsigned len)
     uint32_t c = 0;
     const uint32_t* ptr1 = (const uint32_t*)last4;
 
-    uint32_t sz = sizeof(d_file_extensions)/sizeof(const char*);
+    uint32_t sz = sizeof(d_file_extensions)/sizeof(const char*) - 1;
+
     const uint32_t* ptr2 = nullptr;
     for (ptr2 = (unsigned*)d_file_extensions[c];
          c < sz && *ptr1 != *ptr2;
@@ -37,7 +38,7 @@ bool CheckExtension(const char* buf, unsigned len)
       //got match with a media file, we're not interested
       return false;
 
-    sz = sizeof(d_extensions)/sizeof(const char*);
+    sz = sizeof(d_extensions)/sizeof(const char*) - 1;
     c = 0;
     for (ptr2 = (unsigned*)d_extensions[c];
          c < sz && *ptr1 != *ptr2;
@@ -140,9 +141,16 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   w.scheme.copyFrom(w.httpClient.scheme());
   w.scheme.writeTo(g.scheme.data());
 
+  int readTimeOut = 2;//seconds
+  if (nullptr == ItemLoadAcquire(task->parent))
+    { //in case of root task -- we can increase the timeout
+      readTimeOut = 8;
+    }
+
 #ifdef WITH_LIBNEON
   //issue GET request
   WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
+  ne_set_read_timeout(rq.ctx->sess, readTimeOut);
   //parse the results
   int result = ne_request_dispatch(rq.req.get());
   std::cerr << ne_get_error(rq.ctx->sess);
@@ -175,13 +183,16 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   g.pageIsReady = true;
 #elif defined(WITH_LIBCURL)
   WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
+  if (!rq.valid()) {
+    return false;
+    }
+
+  curl_easy_setopt(rq.ctx->curl, CURLOPT_TIMEOUT, readTimeOut/*seconds*/);
   rq.res = curl_easy_perform(rq.ctx->curl);
   rq.ctx->status = rq.res;
   g.pageContent = std::move(rq.ctx->response);
   g.pageIsReady = (rq.res == CURLE_OK);
-  //reset the CURL state:
-  w.httpClient = WebGrep::Client();
-
+  rq.ctx->disconnect();
 
 
 //WITH_LIBCURL

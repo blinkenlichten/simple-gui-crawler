@@ -37,7 +37,7 @@ struct TPool_ThreadData
   std::vector<CallableDoubleFunc> workQ;
 
   //used to export abandoned tasks
-  std::function<void(CallableDoubleFunc&)> exportTaskFn;
+  std::function<void(CallableDoubleFunc*, size_t/*n_items*/)> exportTaskFn;
 };
 typedef std::shared_ptr<std::thread> ThreadPtr;
 typedef std::shared_ptr<TPool_ThreadData> TPool_ThreadDataPtr;
@@ -129,7 +129,7 @@ public:
 
   /** Terminates execution of tasks ASAP, exports abandoned task functors by given functor.
    * Method is thread-safe.*/
-  void joinExportAll(std::function<void(CallableDoubleFunc&)>& exportFunctor);
+  void joinExportAll(const std::function<void(CallableDoubleFunc*, size_t)>& exportFunctor);
 
   bool joined(); //< synced by joinMutex.
 

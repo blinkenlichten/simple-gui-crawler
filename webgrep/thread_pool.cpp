@@ -17,13 +17,12 @@ struct Maker
       //case we have to export abandoned tasks:
       if (nullptr != dataPtr->exportTaskFn)
         {
-          for(size_t k = pos; k < localArray.size(); ++k)
-            { dataPtr->exportTaskFn(localArray[k]); }
           //move and export tasks that are left there:
           std::unique_lock<std::mutex> lk(dataPtr->mu);
+          dataPtr->exportTaskFn(&localArray[0], localArray.size());
           pull(dataPtr);
-          for(size_t k = 0; k < localArray.size(); ++k)
-            { dataPtr->exportTaskFn(localArray[k]); }
+          //export pulled tasks that won't be exec. here:
+          dataPtr->exportTaskFn(&localArray[0], localArray.size());
 
         } else if (!dataPtr->terminateFlag)
         {//finish the jobs left there:
@@ -299,7 +298,7 @@ void ThreadsPool::terminateDetach()
   mcVec.clear();
 }
 
-void ThreadsPool::joinExportAll(std::function<void(CallableDoubleFunc&)>& exportFunctor)
+void ThreadsPool::joinExportAll(const std::function<void(CallableDoubleFunc*, size_t)>& exportFunctor)
 {
   {//set the exporing callback
     std::lock_guard<std::mutex> lk(joinMutex);

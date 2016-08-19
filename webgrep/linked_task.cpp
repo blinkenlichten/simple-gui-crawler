@@ -100,7 +100,7 @@ size_t LinkedTask::spawnNextNodes(size_t nodesCount)
         StoreAcquire(last_item->next, item);
         {
           item->shallowCopy(*this);
-          StoreAcquire(item->parent, this);
+          StoreAcquire(item->parent, ItemLoadAcquire(this->parent));
           item->order = childNodesCount.load(std::memory_order_acquire);
           this->childNodesCount.fetch_add(1);
         }

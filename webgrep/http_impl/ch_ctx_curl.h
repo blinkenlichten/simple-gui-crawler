@@ -37,6 +37,7 @@ public:
 
   //@return TRUE if scheme is "https"
   bool isHttps() const;
+  void disconnect();
 
   CURL* curl;
   CURLcode status;
@@ -53,6 +54,7 @@ struct IssuedRequest
 {//ref.count holding structure
   IssuedRequest()
   { res = CURL_LAST; responseStringPtr = nullptr;}
+  bool valid() const {return nullptr != ctx && nullptr != ctx->curl;}
 
   CURLcode res;
   WebGrep::Scheme6 method;//example: "POST\0\0"

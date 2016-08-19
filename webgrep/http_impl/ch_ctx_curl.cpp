@@ -20,16 +20,21 @@ ClientCtx::ClientCtx()
           ([](){curl_global_cleanup(); });
     });
 
-  curl = curl_easy_init();
+  curl = nullptr;
   url.reserve(256);
 }
 
 ClientCtx::~ClientCtx()
 {
-  if (nullptr != curl)
-    curl_easy_cleanup(curl);
+  disconnect();
 }
-
+void ClientCtx::disconnect()
+{
+  if (nullptr != curl) {
+    curl_easy_cleanup(curl);
+    curl = nullptr;
+  }
+}
 bool ClientCtx::isHttps() const
 {
   return (0 == ::memcmp(scheme.data(), "https", 5));

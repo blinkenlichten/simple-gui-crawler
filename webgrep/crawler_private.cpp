@@ -27,50 +27,56 @@ bool CrawlerPV::selfTest() const
 //--------------------------------------------------------------
 void CrawlerPV::start(std::shared_ptr<LinkedTask> neuRootTask, unsigned threadsNumber, bool forceRebuild)
 {
-  if (neuRootTask.get() != taskRoot.get())
-    {//stop ASAP with tasks termination
-      workersPool->terminateDetach();
-    }
-  else
-    {//stop temporarly, with tasks re-sheduling
-      stop();
-    }
-
-  //set up workersPool if needed.
-  if (workersPool->closed() || workersPool->threadsCount() != threadsNumber)
-    {
-      workersPool.reset(new WebGrep::ThreadsPool(threadsNumber));
-    }
-
-  if(taskRoot == neuRootTask)
-  { //submit previously abandoned tasks due to stop()
-    std::lock_guard<std::mutex> lk(slockLonelyFunctors); (void)lk;
-    if (!lonelyFunctorsVector.empty())
-      {
-        workersPool->submit(&lonelyFunctorsVector[0], lonelyFunctorsVector.size());
+  try {
+    if (neuRootTask.get() != taskRoot.get())
+      {//stop ASAP with tasks termination
+        workersPool->terminateDetach();
       }
+    else
+      {//stop temporarly, with tasks re-sheduling
+        stop();
+      }
+
+    //set up workersPool if needed.
+    if (workersPool->closed() || workersPool->threadsCount() != threadsNumber)
+      {
+        workersPool.reset(new WebGrep::ThreadsPool(threadsNumber));
+      }
+
+    if(taskRoot == neuRootTask)
+      { //submit previously abandoned tasks due to stop()
+        std::lock_guard<std::mutex> lk(slockLonelyFunctors); (void)lk;
+        if (!lonelyFunctorsVector.empty())
+          {
+            workersPool->submit(&lonelyFunctorsVector[0], lonelyFunctorsVector.size());
+          }
+      }
+
+    taskRoot = neuRootTask;
+
+    WorkerCtx worker = makeWorkerContext();
+    if (taskRoot->grepVars.pageIsParsed && !forceRebuild)
+      { //do not re-parse everything if it's ready unless forced to
+        return;
+      }
+    //Start parsing the first(root's) URL
+    //this functor will wake-up pending task from another thread
+    FuncGrepOne(taskRoot.get(), worker);
+    LinkedTask* expell = nullptr;
+
+    //make a child node for new sequence of pages for download/grep
+    LinkedTask* child = taskRoot->spawnChildNode(expell); DeleteList(expell);
+    size_t spawnedCnt = child->spawnGreppedSubtasks(worker.hostPort, taskRoot->grepVars, 0);
+    std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
+    worker.childLevelSpawned(child);
+    //we have grepped N URLs from the first page
+    //ventillate them as subtasks:
+    worker.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 0 );
+  } catch(const std::exception& ex)
+  {
+    if(onException)
+      onException(ex.what());
   }
-
-  taskRoot = neuRootTask;
-
-  WorkerCtx worker = makeWorkerContext();
-  if (taskRoot->grepVars.pageIsParsed && !forceRebuild)
-    { //do not re-parse everything if it's ready unless forced to
-      return;
-    }
-  //Start parsing the first(root's) URL
-  //this functor will wake-up pending task from another thread
-  FuncGrepOne(taskRoot.get(), worker);
-  LinkedTask* expell = nullptr;
-
-  //make a child node for new sequence of pages for download/grep
-  LinkedTask* child = taskRoot->spawnChildNode(expell); DeleteList(expell);
-  size_t spawnedCnt = child->spawnGreppedSubtasks(worker.hostPort, taskRoot->grepVars, 0);
-  std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
-  worker.childLevelSpawned(child);
-  //we have grepped N URLs from the first page
-  //ventillate them as subtasks:
-  worker.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 0 );
 
 }
 //--------------------------------------------------------------
@@ -78,16 +84,19 @@ void CrawlerPV::stop()
 {
   auto this_shared = shared_from_this();
 
-  std::function<void(WebGrep::CallableDoubleFunc&)> exportFn =
-      [this,this_shared](WebGrep::CallableDoubleFunc& dfunc)
+  std::function<void(WebGrep::CallableDoubleFunc*, size_t)> exportFn =
+      [this_shared](WebGrep::CallableDoubleFunc* dfuncArray, size_t len)
   {
       std::lock_guard<std::mutex> lk(this_shared->slockLonelyFunctors);
       (void)lk;
-      this_shared->lonelyFunctorsVector.push_back(dfunc.functor);
+      for(size_t c = 0; c < len; ++c)
+        {
+          this_shared->lonelyFunctorsVector.push_back(dfuncArray[c].functor);
+        }
   };
   //terminate the tasks manager and export abandoned tasks here:
   auto workersCopy = workersPool;
-  std::thread waiter([this, this_shared, workersCopy, &exportFn](){
+  std::thread waiter([workersCopy, exportFn](){
       if (nullptr == workersCopy)
         { return; }
       try {
@@ -127,7 +136,11 @@ WorkerCtx CrawlerPV::makeWorkerContext()
       crawlerImpl->onPageScanned(crawlerImpl->taskRoot, node);
   };
 
-  ctx.childLevelSpawned = ctx.pageMatchFinishedCb;
+  ctx.childLevelSpawned  = [crawlerImpl](LinkedTask* node)
+  {
+    if(crawlerImpl->onLevelSpawned)
+      crawlerImpl->onLevelSpawned(crawlerImpl->taskRoot, node);
+  };
 
   ctx.sheduleTask = [crawlerImpl](const LonelyTask* task)
   {

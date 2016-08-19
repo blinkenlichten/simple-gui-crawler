@@ -75,7 +75,7 @@ Widget::Widget(QWidget *parent) :
 
 
   /** On new linked page scan finished.*/
-  crawler->setPageScannedCB([this]
+  crawler->setLevelSpawnedCB([this]
   (std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGrep::LinkedTask* node)
   {
     this->onPageScanned(rootNode, node);
@@ -237,8 +237,6 @@ void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGre
       auto iter = taskWidgetsMap.find(parent);
       if (taskWidgetsMap.end() == iter)
         {
-          std::cerr << "Node not found: " << node->grepVars.targetUrl
-                    << " level: " << node->level << std::endl;
           return;
         }
       QTreeWidgetItem* parentWidget = (*iter).second.widget;
