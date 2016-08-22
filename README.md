@@ -191,6 +191,8 @@ NEON, cURL, QtNetwork::QNetworkAccessManager. They're switched by CMake options.
 # GUI and the algorithm
 Ideally, I could write some kind of adapter class instead of working with bare (LinkedTask\*) pointers,
 but it'll a bit more effort.
+The "bandaging" code between the algoritm and the GUI takes nearly 120 lines of code and can be located
+at method "widget.cpp: void Widget::onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGrep::LinkedTask\* node)"
 So, in GUI we just read the reference counted pointer std::shared_ptr<LinkedTask> which has a custom
 deleter and update the GUI elements that shows the progress of the scanning process.
 

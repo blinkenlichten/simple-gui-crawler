@@ -10,9 +10,9 @@ void TraverseFunc(LinkedTask* head, void* additional,
   if (nullptr == head || nullptr == func) return;
   LinkedTask* next = ItemLoadAcquire(head->next);
   LinkedTask* child = ItemLoadAcquire(head->child);
-  func(head, additional);
   TraverseFunc(next, additional, func);
   TraverseFunc(child, additional, func);
+  func(head, additional);
 }
 
 // Recursively traverse the list and call functor on each item
@@ -22,21 +22,50 @@ void TraverseFunctor(LinkedTask* head, void* additional,
   if (nullptr == head || nullptr == func) return;
   LinkedTask* next = ItemLoadAcquire(head->next);
   LinkedTask* child = ItemLoadAcquire(head->child);
-  func(head, additional);
   TraverseFunctor(next, additional, func);
   TraverseFunctor(child, additional, func);
+  func(head, additional);
 }
 
 static void DeleteCall(LinkedTask* item, void* data)
 {
   (void)data;
-  delete item;
+  LinkedTask* root = WebGrep::ItemLoadAcquire(item->root);
+  if (root == item)
+    {
+      delete item;
+      return;
+    }
+  root->deleteNode(root, item);
 }
 
 // Free memory recursively.
 void DeleteList(LinkedTask* head)
 {
-  TraverseFunc(head, head, &DeleteCall);
+  TraverseFunc(head, nullptr, &DeleteCall);
+}
+
+LinkedTask* FuncNeu(LinkedTask* RootNodePtr)
+{
+  LinkedTask* p = nullptr;
+  try {
+    auto cntMax = RootNodePtr->maxPossbleNodesQuantity.load();
+    auto cntCur = RootNodePtr->nodeAllocationsCount.load();
+    if (cntMax <= cntCur)
+      {
+        std::cerr << "Maximum nodes count reach: " << cntCur << std::endl;
+        if(RootNodePtr->linksCounterPtr) {
+            std::cerr << " for task No" << (1 + RootNodePtr->linksCounterPtr->load()) << std::endl;
+          }
+        return nullptr;
+      }
+    p = new LinkedTask(RootNodePtr);
+    RootNodePtr->nodeAllocationsCount.fetch_add(1);
+  }catch(std::bad_alloc& ba)
+  {
+    std::cerr << ba.what() << std::endl;
+  }
+  return p;
 }
 //---------------------------------------------------------------
 LinkedTask::LinkedTask() : level(0)
@@ -47,9 +76,34 @@ LinkedTask::LinkedTask() : level(0)
   root.store(0);
   parent.store(0);
   childNodesCount.store(0);
+  maxPossbleNodesQuantity.store(8192);
+  nodeAllocationsCount.store(0);
+
+  makeNewNode = &FuncNeu;
+
+  deleteNode = [](LinkedTask* RootNodePtr, LinkedTask* node_ptr)
+  {
+    delete node_ptr;
+    RootNodePtr->nodeAllocationsCount.fetch_sub(1);
+  };
+
 }
 
+LinkedTask::LinkedTask(LinkedTask* rootNode) : LinkedTask()
+{
+  shallowCopy(*rootNode);
+  root.store((std::uintptr_t)rootNode);
+}
 
+std::shared_ptr<LinkedTask> LinkedTask::createRootNode()
+{
+  std::shared_ptr<LinkedTask> rootNode;
+  auto ptr = new LinkedTask;
+  rootNode.reset(ptr,
+             [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
+  rootNode->root.store((std::uintptr_t)ptr);
+  return rootNode;
+}
 
 //---------------------------------------------------------------
 void LinkedTask::shallowCopy(const LinkedTask& other)
@@ -63,6 +117,7 @@ void LinkedTask::shallowCopy(const LinkedTask& other)
 
   maxLinksCountPtr = other.maxLinksCountPtr;
   linksCounterPtr = other.linksCounterPtr;
+  maxPossbleNodesQuantity.store(other.maxPossbleNodesQuantity.load());
 }
 
 LinkedTask* LinkedTask::getLastOnLevel()
@@ -85,6 +140,8 @@ size_t LinkedTask::spawnNextNodes(size_t nodesCount)
   if (0 == nodesCount)
     return 0;
 
+  LinkedTask* root = ItemLoadAcquire(this->root);
+
   //go to the end elemet:
   LinkedTask* last_item = getLastOnLevel();
 
@@ -96,14 +153,14 @@ size_t LinkedTask::spawnNextNodes(size_t nodesCount)
     LinkedTask* item = nullptr;
     for(; c < nodesCount; ++c, last_item = item)
       {
-        item = new LinkedTask;
+        item = root->makeNewNode(root);
         StoreAcquire(last_item->next, item);
-        {
-          item->shallowCopy(*this);
-          StoreAcquire(item->parent, ItemLoadAcquire(this->parent));
-          item->order = childNodesCount.load(std::memory_order_acquire);
-          this->childNodesCount.fetch_add(1);
-        }
+        if (nullptr == item)
+          break;
+        item->shallowCopy(*this);
+        StoreAcquire(item->parent, ItemLoadAcquire(this->parent));
+        item->order = childNodesCount.load(std::memory_order_acquire);
+        this->childNodesCount.fetch_add(1);
       };
   }catch(std::exception& ex)
   {
@@ -115,9 +172,12 @@ size_t LinkedTask::spawnNextNodes(size_t nodesCount)
 
 LinkedTask* LinkedTask::spawnChildNode(LinkedTask*& expelledChild)
 {
+  LinkedTask* rootNode = ItemLoadAcquire(this->root);
   expelledChild = ItemLoadAcquire(child);
   try {
-    auto item = new LinkedTask;
+    auto item = rootNode->makeNewNode(rootNode);
+    if(nullptr == item)
+      return nullptr;
     StoreAcquire(child, item);
     item->shallowCopy(*this);
     item->parent.store((std::uintptr_t)this);
@@ -159,8 +219,10 @@ size_t ForEachOnBranch(LinkedTask* head, std::function<void(LinkedTask*)> functo
 
 size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const GrepVars& targetVariables, size_t skipCount)
 {
-  if (!targetVariables.pageIsParsed)
-    return 0;
+  if (!targetVariables.pageIsParsed || targetVariables.matchURLVector.empty())
+    {
+      return 0;
+    }
 
   size_t cposition = 0;
   auto func = [this, &cposition, &host_and_port, &targetVariables](LinkedTask* node)

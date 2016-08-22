@@ -200,7 +200,7 @@
            </size>
           </property>
           <property name="text">
-           <string>256</string>
+           <string>1024</string>
           </property>
           <property name="maxLength">
            <number>8</number>
@@ -272,6 +272,13 @@
            </size>
           </property>
          </spacer>
+        </item>
+        <item>
+         <widget class="QLabel" name="urlCountLabel">
+          <property name="text">
+           <string>0 URLs processed</string>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QProgressBar" name="progressBar">

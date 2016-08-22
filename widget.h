@@ -65,7 +65,6 @@ private slots:
   void onHelpClicked();
 
 private:
-//  void populateListsFunction(WebGrep::LinkedTask* head, void*);
 
   void print(WebGrep::LinkedTask* head, void*);
 
@@ -89,6 +88,7 @@ private:
     WebGrep::LinkedTask* node;
     QTreeWidgetItem* widget;
   };
+  void makeKnown(WebGrep::LinkedTask* task, QTreeWidgetItem* widget, const std::shared_ptr<WebGrep::LinkedTask>& root);
 
   std::map<WebGrep::LinkedTask*, WidgetConn> taskWidgetsMap;
   std::map<QTreeWidgetItem*, WebGrep::LinkedTask*> widgetsTaskMap;

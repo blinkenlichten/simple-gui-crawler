@@ -92,12 +92,13 @@ public:
   void clear();
 
   std::function<void(const std::string& what)> onException;
-
+  //-----------------------------------------------------------------------------
   /** Called on each HTML page's parsing success.*/
-  std::function<void(std::shared_ptr<LinkedTask> rootNode, LinkedTask* node)>  onPageScanned;
+  WebGrep::NodeScanCallback_t onSingleNodeScanned;
+  WebGrep::NodeScanCallback_t onNodeListScanned;
 
   /** Called when after parsing one page a new level of node with subpages spawned for parsing.*/
-  std::function<void(std::shared_ptr<LinkedTask> rootNode, LinkedTask* node)>  onLevelSpawned;
+  WebGrep::NodeScanCallback_t onLevelSpawned;
   //-----------------------------------------------------------------------------
   /** main task (for first html page) all other are subtasks
   must be allocated explicitly before start().

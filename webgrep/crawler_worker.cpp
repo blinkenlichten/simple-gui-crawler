@@ -11,15 +11,16 @@ bool CheckExtension(const char* buf, unsigned len)
     {//slashes mean directories:
       return len > 1 && ('/' == buf[len - 1] || buf[0] == '/');
     }
-  //not interesting files (media):
+  //not interesting files (media, .css):
   static const char* d_file_extensions[ ] = {
       ".js",  ".jpg", "jpeg", ".mp4", "mpeg", ".avi",
       ".mkv", "rtmp", ".mov", ".3gp", ".wav", ".mp3",
-      ".doc", ".odt", ".pdf", ".gif", ".ogv", ".ogg", "\0\0\0\0"
+      ".doc", ".odt", ".pdf", ".gif", ".ogv", ".ogg",
+      ".css","\0\0\0\0"
     };
   //interesting files:
   static const char* d_extensions[ ]
-      = {"html", ".htm", ".asp", ".jsp", ".php", ".rb", ".prl", ".py", "\0"};
+      = {"html",".txt", ".cgi", ".htm", ".asp", ".jsp", ".php", ".rb", ".pl", ".py", "\0"};
   const char* last4 = buf + len - 4;
 
   //since we have only 4 bytes there, lets compare them as uint32_t
@@ -149,7 +150,8 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
 
 #ifdef WITH_LIBNEON
   //issue GET request
-  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
+  size_t pathBegin = FindURLPathBegin(url.data(), url.size());
+  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", url.data() + pathBegin);
   ne_set_read_timeout(rq.ctx->sess, readTimeOut);
   //parse the results
   int result = ne_request_dispatch(rq.req.get());
@@ -182,7 +184,8 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   g.pageContent = std::move(rq.ctx->response);
   g.pageIsReady = true;
 #elif defined(WITH_LIBCURL)
-  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", "/");
+  size_t pathBegin = FindURLPathBegin(url.data(), url.size());
+  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", url.data() + pathBegin);
   if (!rq.valid()) {
     return false;
     }
@@ -195,11 +198,13 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   rq.ctx->disconnect();
 
 
-//WITH_LIBCURL
+//end of WITH_LIBCURL
+
 #elif defined(WITH_QTNETWORK)
   //temporary solution for Windows: not using libneon, but QtNetwork instead
   //issue GET request
-  WebGrep::IssuedRequest issue = w.httpClient.issueRequest("GET", "/");
+  size_t pathBegin = FindURLPathBegin(url.data(), url.size());
+  WebGrep::IssuedRequest issue = w.httpClient.issueRequest("GET", url.data() + pathBegin);
   //the manager will dispatch asyncronously
   std::shared_ptr<QNetworkReply> rep = issue.ctx->makeGet(issue.req);
   std::unique_lock<std::mutex> lk(issue.ctx->mu);
@@ -264,19 +269,21 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
       const char httpCSTR[] = "http";
       const uint32_t hrefSz = sizeof(hrefCSTR) - 1;
       const uint32_t httpSz = sizeof(httpCSTR) - 1;
-      for(size_t pos = 0; (pos + std::max(hrefSz,httpSz)) < g.pageContent.size(); ++pos)
+      const std::string& _page(g.pageContent);
+
+      for(size_t pos = 0; (pos + 1 + std::max(hrefSz,httpSz)) < _page.size(); ++pos)
         {
           size_t linkPos = pos;
           bool isHref = false;
-          const char* ptr = g.pageContent.data() + pos;
+          const char* ptr = _page.data() + pos;
           if (0 == ::memcmp(ptr, hrefCSTR, hrefSz))
             {
               //case href = "/resource/res2/page.html"
-              linkPos = g.pageContent.find_first_of('=',4 + pos);
+              linkPos = _page.find_first_of('=',4 + pos);
               isHref = true;
             }
           else if (0 == ::memcmp(ptr, httpCSTR, httpSz)
-                   && (*ptr == ':' || (*ptr == 's')))
+                   && (ptr[4] == ':' || (ptr[4] == 's')))
             {
               isHref = false;
             }
@@ -285,15 +292,25 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
               continue;
             }
 
-          linkPos = g.pageContent.find_first_of('"', linkPos);
+          linkPos = _page.find_first_of('"', linkPos);
           linkPos++;
           //make new iterators that point to g.pageContent
-          auto begin = g.pageContent.begin();
+          auto begin = _page.begin();
           begin += isHref? linkPos : pos;
           auto end = begin;
-          auto quote2 = g.pageContent.find_first_of('"', linkPos);
-          end += (size_t)(quote2 - linkPos);
-          if (quote2 == std::string::npos
+
+          auto find_quote2 = [](const char* strPtr, const char* end) -> size_t
+          {//inc pointer until we get on of charactres "\n\">'"
+              auto old = strPtr;
+              for(char c = strPtr[0]; strPtr < end
+                  && '\'' != c && '\n' != c && '"' != c && '>' != c; ++strPtr)
+                { c = strPtr[1]; }
+              return strPtr - old;
+          };
+          end += find_quote2((const char*)&(*begin), _page.data()
+                                    + std::min((size_t)WebGrep::MaxURLlen, _page.size()));
+
+          if (end == _page.end() || end >= begin + WebGrep::MaxURLlen
               || (end - begin) <= 1
               || (isHref && !(*begin == '/' || *begin == 'h'))
               || (!isHref && (begin + 10) > end )
@@ -365,7 +382,18 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
   g.pageIsParsed = true;
   if (w.pageMatchFinishedCb)
     {
-      w.pageMatchFinishedCb(task);
+      w.pageMatchFinishedCb(w.rootNode, task);
+    }
+  if (nullptr == ItemLoadAcquire(task->next))
+    {//case it was the last task in the sub-list, emit a signal:
+      if(w.nodeListFinishedCb)
+        {
+          LinkedTask* parent = ItemLoadAcquire(task->parent);
+          if (nullptr != parent)
+            {//notify with first node of this branch
+              w.nodeListFinishedCb(w.rootNode, ItemLoadAcquire(parent->child));
+            }
+        }
     }
   return g.pageIsReady && g.pageIsParsed;
 }
@@ -373,14 +401,14 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
 bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w)
 {
   //case stopped by force:
-  if (nullptr == task->linksCounterPtr)
+  if (nullptr == task || nullptr == task->linksCounterPtr)
     { return false; }
 
   size_t link_cnt = task->linksCounterPtr->load(std::memory_order_acquire);
   if (link_cnt >= task->maxLinksCountPtr->load(std::memory_order_acquire))
     {//max. links reached, lets stop the parsing
       if (w.onMaximumLinksCount) {
-          w.onMaximumLinksCount(task);
+          w.onMaximumLinksCount(w.rootNode, task);
         }
       return true;
     }
@@ -405,7 +433,9 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w)
 
   //emit signal that we've spawned a new level:
   if (nullptr != w.childLevelSpawned)
-    { w.childLevelSpawned(child); }
+    {
+      w.childLevelSpawned(w.rootNode, child);
+    }
 
   //call self by sending tasks calling this method to different threads
   //(tasks ventillation)

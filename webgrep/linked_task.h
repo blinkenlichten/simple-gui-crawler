@@ -80,8 +80,14 @@ size_t ForEachOnBranch(LinkedTask* head, std::function<void(LinkedTask*)> functo
  */
 class LinkedTask : public WebGrep::noncopyable
 {
-public:
+  //constructor for a root node
   LinkedTask();
+public:
+
+  static std::shared_ptr<LinkedTask> createRootNode();
+
+  //constructor for child nodes
+  LinkedTask(LinkedTask* rootNode);
 
   //shallow copy without {.next, .targetUrl, .pageContent}
   void shallowCopy(const LinkedTask& other);
@@ -122,7 +128,22 @@ public:
   // you must have guaranteed that these are set & will live longer than any LinkedTask object
   std::shared_ptr<std::atomic_uint> linksCounterPtr, maxLinksCountPtr;
 
+  std::atomic_uint nodeAllocationsCount;
+
+  /** ctor() sets the limit 8192 that sis computed for estimation of 2GB memory for 200kb .html pages in average.
+   * You can modify this value for root node if it's reasonable.
+ */
+  std::atomic_uint maxPossbleNodesQuantity;
+
+  //modify these for root node, all child nodes will use the (LinkedTask*)root pointer to call them.
+  //child nodes usuall have these equal to (nullptr)
+  std::function<LinkedTask*(LinkedTask*/*RootNodePtr*/)> makeNewNode;
+  std::function<void(LinkedTask*/*RootNodePtr*/, LinkedTask* /*node_ptr*/)> deleteNode;
+
 };
+//---------------------------------------------------------------
+typedef std::shared_ptr<LinkedTask> RootNodePtr;
+
 //---------------------------------------------------------------
 static inline LinkedTask* ItemLoadAcquire(std::atomic_uintptr_t& value)
 { return (LinkedTask*)value.load(std::memory_order_acquire); }

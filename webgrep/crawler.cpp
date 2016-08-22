@@ -12,7 +12,7 @@ void Crawler::setExceptionCB(OnExceptionCallback_t func)
 
 void Crawler::setPageScannedCB(OnPageScannedCallback_t func)
 {
-  pv->onPageScanned = func;
+  pv->onNodeListScanned = func;
 }
 
 void Crawler::setLevelSpawnedCB(OnPageScannedCallback_t func)
@@ -30,9 +30,10 @@ void Crawler::clear()
   pv->clear();
 }
 //---------------------------------------------------------------
-bool Crawler::start(const std::string& url,
-                    const std::string& grepRegex,
-                    unsigned maxLinks, unsigned threadsNum)
+std::shared_ptr<LinkedTask> Crawler::start
+  (const std::string& url,
+   const std::string& grepRegex,
+   unsigned maxLinks, unsigned threadsNum)
 {
   //----------------------------------------------------------------
   // These functors are set in a way that binds them to reference-counted
@@ -51,9 +52,7 @@ bool Crawler::start(const std::string& url,
     if (nullptr == pv->taskRoot || pv->taskRoot->grepVars.targetUrl != url)
       {
         //alloc toplevel node:
-        mainTask.reset(new LinkedTask,
-                       [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
-
+        mainTask = LinkedTask::createRootNode();
         pv->currentLinksCount->store(0);
         mainTask->linksCounterPtr = (pv->currentLinksCount);
         mainTask->maxLinksCountPtr = (pv->maxLinksCount);
@@ -81,9 +80,9 @@ bool Crawler::start(const std::string& url,
     std::cerr << ex.what() << "\n";
     if(pv->onException)
       { pv->onException(ex.what()); }
-    return false;
+    return nullptr;
   }
-  return true;
+  return mainTask;
 }
 
 void Crawler::stop()

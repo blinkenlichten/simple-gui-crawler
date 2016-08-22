@@ -19,6 +19,7 @@ class CrawlerPV;
 class Crawler
 {
 public:
+
   Crawler();
 
   static const unsigned maxThreads = 32;
@@ -34,9 +35,13 @@ public:
    * It will continue scanning from the last stop() point if the arguments
    * are the same as before.
    *
-   * @param grepRegex: boost.regex valid expression to grep the textual content.*/
-  bool start(const std::string& url, const std::string& grepRegex,
-             unsigned maxLinks = 4096, unsigned threadsNum = 4);
+   * @param grepRegex: boost.regex valid expression to grep the textual content.
+   * @return pointer to the root node of the tasks tree,
+   *  it can be read concurrently while it's being updated in the crawler's threads.
+*/
+  std::shared_ptr<LinkedTask> start(const std::string& url,
+                                    const std::string& grepRegex,
+                                    unsigned maxLinks = 4096, unsigned threadsNum = 4);
 
   /** Halts the html pages crawler for a while.
    *  Use clear() to clear the search results totally.*/

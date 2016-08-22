@@ -15,8 +15,11 @@
 
 namespace WebGrep {
 
+
 struct LonelyTask;
+
 typedef std::function<void()> CallableFunc_t;
+typedef std::function<void(std::shared_ptr<LinkedTask> rootNode, LinkedTask* node)> NodeScanCallback_t;
 
 //---------------------------------------------------------------
 /** The structure must be copyable in such manner that
@@ -35,9 +38,6 @@ struct WorkerCtx
 #endif
     scheme.fill(0);
     data_ = nullptr;
-
-    childLevelSpawned = [](LinkedTask* task)
-    { std::cerr << "new childLevel: " << task->grepVars.targetUrl << "\n";};
   }
 
   //--------------------------------------------------------
@@ -67,13 +67,14 @@ struct WorkerCtx
   //---- callbacks, all three are set by the working functions -------
 
   /** when max. links count reached.*/
-  std::function<void(LinkedTask*)> onMaximumLinksCount;
+  WebGrep::NodeScanCallback_t onMaximumLinksCount;
 
   /** Invoked on each page parsed.*/
-  std::function<void(LinkedTask*)> pageMatchFinishedCb;
+  WebGrep::NodeScanCallback_t pageMatchFinishedCb;
+  WebGrep::NodeScanCallback_t nodeListFinishedCb;
 
   /** Invoked when a new level of child nodes has spawned, e.g. a sequence of pages to be parsed. */
-  std::function<void(LinkedTask*)> childLevelSpawned;
+  WebGrep::NodeScanCallback_t childLevelSpawned;
 
   //some utilities as methods:
   typedef bool (*WorkFunc_t)(LinkedTask* task, WorkerCtx& w);

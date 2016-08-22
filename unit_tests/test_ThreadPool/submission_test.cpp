@@ -52,8 +52,7 @@ bool test1()
     TestItems() : result(false)
     {
       g_cnt.store(0);
-      ltask.reset(new WebGrep::LinkedTask,
-                  [](void* p){WebGrep::DeleteList((WebGrep::LinkedTask*)p);} );
+      ltask = LinkedTask::createRootNode();
       spawned = ltask->spawnNextNodes(_N);
       head = std::make_shared<LList>(g_cnt, 0);
       list_cur_ptr = head;

@@ -8,11 +8,11 @@ bool CrawlerPV::selfTest() const
   try {
     for(unsigned z = 0; z < 4; ++z)
       {
-        std::shared_ptr<WebGrep::LinkedTask> lq;
-        lq.reset(new LinkedTask,
-                 [](LinkedTask* ptr){WebGrep::DeleteList(ptr);});
+        std::shared_ptr<WebGrep::LinkedTask> lq = LinkedTask::createRootNode();
         LinkedTask* tmp = 0;
         auto child = lq->spawnChildNode(tmp);
+        if (nullptr == child)/*on max. nodes counter*/
+          return true;
         size_t n = child->spawnNextNodes(1024 * z + z);
         assert(n == (1024 * z + z));
       }
@@ -68,7 +68,7 @@ void CrawlerPV::start(std::shared_ptr<LinkedTask> neuRootTask, unsigned threadsN
     LinkedTask* child = taskRoot->spawnChildNode(expell); DeleteList(expell);
     size_t spawnedCnt = child->spawnGreppedSubtasks(worker.hostPort, taskRoot->grepVars, 0);
     std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
-    worker.childLevelSpawned(child);
+    worker.childLevelSpawned(taskRoot,child);
     //we have grepped N URLs from the first page
     //ventillate them as subtasks:
     worker.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 0 );
@@ -130,17 +130,8 @@ WorkerCtx CrawlerPV::makeWorkerContext()
 
   auto crawlerImpl = shared_from_this();
   //enable workers to spawn subtasks e.g. "start"
-  ctx.pageMatchFinishedCb  = [crawlerImpl](LinkedTask* node)
-  {
-    if (crawlerImpl->onPageScanned)
-      crawlerImpl->onPageScanned(crawlerImpl->taskRoot, node);
-  };
-
-  ctx.childLevelSpawned  = [crawlerImpl](LinkedTask* node)
-  {
-    if(crawlerImpl->onLevelSpawned)
-      crawlerImpl->onLevelSpawned(crawlerImpl->taskRoot, node);
-  };
+  ctx.pageMatchFinishedCb = crawlerImpl->onNodeListScanned;
+  ctx.childLevelSpawned = crawlerImpl->onLevelSpawned;
 
   ctx.sheduleTask = [crawlerImpl](const LonelyTask* task)
   {
