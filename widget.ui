@@ -342,6 +342,12 @@
            </item>
            <item>
             <widget class="QTreeWidget" name="treeWidget">
+             <property name="verticalScrollBarPolicy">
+              <enum>Qt::ScrollBarAlwaysOn</enum>
+             </property>
+             <property name="horizontalScrollBarPolicy">
+              <enum>Qt::ScrollBarAlwaysOn</enum>
+             </property>
              <column>
               <property name="text">
                <string notr="true">1</string>

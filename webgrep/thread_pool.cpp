@@ -68,6 +68,37 @@ struct Maker
   std::vector<CallableDoubleFunc> localArray;
 
 };
+size_t TPool_ThreadData::enqueue(std::unique_lock<std::mutex>& lk,
+                                 WebGrep::CallableFunc_t* array, size_t len, IteratorFunc_t iterFn)
+{
+  (void)lk;
+  WebGrep::CallableFunc_t* ptr = array;
+
+  size_t cnt = 0;
+  WebGrep::CallableDoubleFunc dfunc;
+  bool ok = true;
+  for(; ok; ok = iterFn(&ptr, &cnt, len))
+    {
+      dfunc.functor = *ptr;
+      workQ.push_back(dfunc);
+    }
+  return cnt;
+}
+
+size_t TPool_ThreadData::enqueue(std::unique_lock<std::mutex>& lk,
+                                 CallableDoubleFunc* array, size_t len, IteratorFunc2_t iterFn)
+{
+  (void)lk;
+  CallableDoubleFunc* ptr = array;
+
+  bool ok = true;
+  size_t cnt = 0;
+  for(; ok; ok = iterFn(&ptr, &cnt, len))
+    {
+      workQ.push_back(*ptr);
+    }
+  return cnt;
+}
 
 void ThreadsPool_processingLoop(const TPool_ThreadDataPtr& td)
 {
@@ -136,7 +167,9 @@ bool ThreadsPool::submit(const WebGrep::CallableFunc_t& ftor)
   CallableDoubleFunc pair;
   pair.functor = ftor;
   pair.cbOnException = [](const std::exception& ex)
-  { std::cerr << "Exception suppressed: " << ex.what() << std::endl;};
+  {
+      std::cerr << "Exception suppressed: " << ex.what() << std::endl;
+  };
   return submit(&pair, 1);
 }
 
@@ -155,17 +188,10 @@ bool ThreadsPool::submit(CallableDoubleFunc* ftorArray, size_t len,
       {//case we serialize tasks just to 1 thread
         TPool_ThreadData* td = mcVec[idx].get();
         {
-          std::unique_lock<std::mutex>lk(td->mu);
-
-          CallableDoubleFunc* ptr = ftorArray;
-
-          bool ok = true;
-          for(size_t cnt = 0; ok; ok = iterFn(&ptr, &cnt, len))
-            {
-              td->workQ.push_back(*ptr);
-            }
+          std::unique_lock<std::mutex>lk(td->mu); (void)lk;
+          td->enqueue(lk, ftorArray, len, iterFn);
         }
-        td->cond.notify_all();
+        td->notify();
         return true;
       }
 
@@ -180,7 +206,8 @@ bool ThreadsPool::submit(CallableDoubleFunc* ftorArray, size_t len,
           (void)lk;
           td->workQ.push_back(*ptr);
         }
-        td->cond.notify_all();
+        td->notify();
+
         d_current.fetch_add(inc, std::memory_order_acquire);
         idx = d_current.load(std::memory_order_relaxed) % threadsVec.size();
       }
@@ -206,21 +233,13 @@ bool ThreadsPool::submit(WebGrep::CallableFunc_t* ftorArray, size_t len,
     if (!spray)
       {//case we serialize tasks just to 1 thread
         TPool_ThreadData* td = mcVec[idx].get();
+        size_t n = 0;
         {
           std::unique_lock<std::mutex>lk(td->mu);
-
-          WebGrep::CallableFunc_t* ptr = ftorArray;
-          WebGrep::CallableDoubleFunc dfunc;
-
-          bool ok = true;
-          for(size_t cnt = 0; ok; ok = iterFn(&ptr, &cnt, len))
-            {
-              dfunc.functor = *ptr;
-              td->workQ.push_back(dfunc);
-            }
+          n = td->enqueue(lk, ftorArray, len, iterFn);
         }
-        td->cond.notify_all();
-        return true;
+        td->notify();
+        return n == len;
       }
 
     //case we serialize tasks to all threads (spraying them):
@@ -233,11 +252,10 @@ bool ThreadsPool::submit(WebGrep::CallableFunc_t* ftorArray, size_t len,
         TPool_ThreadData* td = mcVec[idx].get();
         {
           std::unique_lock<std::mutex>lk(td->mu);
-          (void)lk;
-          dfunc.functor = *ptr;
-          td->workQ.push_back(dfunc);
+          td->enqueue(lk, &dfunc, 1);
         }
-        td->cond.notify_all();
+        td->notify();
+
         d_current.fetch_add(inc, std::memory_order_acquire);
         idx = d_current.load(std::memory_order_relaxed) % threadsVec.size();
       }
@@ -249,6 +267,16 @@ bool ThreadsPool::submit(WebGrep::CallableFunc_t* ftorArray, size_t len,
   return true;
 }
 
+TPool_ThreadDataPtr ThreadsPool::getDataHandle()
+{
+  if (closed())
+    return nullptr;
+
+  d_current.fetch_add(1, std::memory_order_acquire);
+  unsigned idx = d_current.load(std::memory_order_relaxed) % threadsVec.size();
+
+  return mcVec[idx];
+}
 
 void ThreadsPool::close()
 {

@@ -37,7 +37,7 @@ size_t FindURLPathBegin(const char* str, size_t nmax)
     {
       ptr = str + pos;
     }
-  return ptr - str;
+  return 1 + (ptr - str);
 }
 //-----------------------------------------------------------------
 //-----------------------------------------------------------------

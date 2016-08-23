@@ -68,6 +68,12 @@ void CrawlerPV::start(std::shared_ptr<LinkedTask> neuRootTask, unsigned threadsN
     LinkedTask* child = taskRoot->spawnChildNode(expell); DeleteList(expell);
     size_t spawnedCnt = child->spawnGreppedSubtasks(worker.hostPort, taskRoot->grepVars, 0);
     std::cerr << "Root task: " << spawnedCnt << " spawned;\n";
+    if (0 == spawnedCnt)
+      {
+        WebGrep::DeleteList(child);
+        taskRoot->child.store(0u);
+        return;
+      }
     worker.childLevelSpawned(taskRoot,child);
     //we have grepped N URLs from the first page
     //ventillate them as subtasks:
@@ -130,7 +136,8 @@ WorkerCtx CrawlerPV::makeWorkerContext()
 
   auto crawlerImpl = shared_from_this();
   //enable workers to spawn subtasks e.g. "start"
-  ctx.pageMatchFinishedCb = crawlerImpl->onNodeListScanned;
+  ctx.nodeListFinishedCb = crawlerImpl->onNodeListScanned;
+  ctx.pageMatchFinishedCb = crawlerImpl->onSingleNodeScanned;
   ctx.childLevelSpawned = crawlerImpl->onLevelSpawned;
 
   ctx.sheduleTask = [crawlerImpl](const LonelyTask* task)
@@ -141,6 +148,10 @@ WorkerCtx CrawlerPV::makeWorkerContext()
   ctx.sheduleFunctor = [crawlerImpl](CallableFunc_t func)
   {
     crawlerImpl->sheduleFunctor(func);
+  };
+  ctx.getThreadHandle = [crawlerImpl]() -> TPool_ThreadDataPtr
+  {
+      return crawlerImpl->workersPool->getDataHandle();
   };
   return ctx;
 }

@@ -1,13 +1,18 @@
 # What's this? Just a simle HTTP(S) crawler
-The algorithmic part in subdirectory webgrep/ is intended to get HTML content
-and perform simple parsing, webgrep/ depends on Boost(system,thread)
-and NEON(in linux neon-devel, and HTTP & WebDAV client library).
+The algorithmic part in subdirectory webgrep/ which builds target "libwebgrep.so"
+is intended to get HTML content
+and perform simple parsing, webgrep/ depends on C++11 STL 
+and NEON(in linux neon-devel, and HTTP & WebDAV client library) or cURL instead of NEON.
 
 The application's GUI is built with Qt5.7 GUI framework.
 
 # Purpose
 Take a input URL from the GUI and scan all links to html pages inside recursively and concurrently.
 The user must be able to input the URL, number of threads, maximum number of URLs to be scanned.
+All changes like stop()/start() or thread number change will be applied immediately.
+Pushing "Stop" butting will pause the crawler while preserving it's current tasks in memory,
+pushing "Start" button again will either continue previouslly paused task or clear everything
+and start new tasks of the Web crawler if the user has modified target URL in the GUI input line field.
 
 # Compilation
 The project consists of main test03-v03/CMakeLists.txt file that makes the webgrepGUI Qt5 GUI application
@@ -51,17 +56,17 @@ Copy these to the executable's directory: libeay32.dll ssleay32.dll libgcc_s_dw2
 # ---True story, bro.---
 # Networking: few approches
 
-# Popular things: Microsoft's Cassandra (client/server), Poco libraries
+## Popular things: Microsoft's Cassandra (client/server), Poco libraries
 They're nice, but I couldn't afford MSVC to compile them, it always goes wrong with Microsoft's
 mutilated free version of MSVC. Thus I had to play around MinGW.
 
-# Using MinGW to build network client applications
+## Using MinGW to build network client applications
 
 As can seen from the repo's history the initial idea was to use boost.asio and it's SSL socket,
 but then it went wrong with HTTPS and some exceptions, it needs more tedious work.
 So I threw it out and decided to use some kind of C library with straightforward API that will just let you to do the jobs.
 
-# C-API library
+## C-API library
 My considerations were NEON (http & webdav client) and CURL.
 NEON has much simpler API, because it's intended for HTTP(S) only whereas CURL works over almost any protocol and hence has more complex API.
 Both of them have UNIX-style configurations system and require to use either MSYS or Cygwin (worked out for neon).
@@ -77,7 +82,7 @@ and requires the target deployment to have Cygwin runtime installed into the sys
 Thus, I just download and link to the pre-build libCURL .dll.a from the link on the CURL author's page (https://curl.haxx.se).
 
 
-# Qt5: QNetworkAccessManager
+## Qt5: QNetworkAccessManager
 The program also has use case of Qt5 networking API, but it somehow doesn't call the documented API signals,
 might be a Qt's bug or just wrong use case, needs investigation.
 
@@ -163,6 +168,11 @@ The data structure and it's creation process scheme is:
                     |
                 [child->child{URL1.1}]---[URL{1.2}]--... [URL{1.M}]
 ```
+The tree is being processed by different threads in a wokring queue without explicit synchronization,
+but it is guaranteed that each thread will write only one node everytime data fields
+without data races.
+Explicit synchronization via mutual exclusions is applied whenever task results are being dequeued
+into somewher -- a commonly used vector for export or a Qt5 GUI widgets.
 
 ## Components
 

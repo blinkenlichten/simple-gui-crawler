@@ -61,7 +61,7 @@ bool CheckExtension(const char* buf, unsigned len)
   return !canHazDot && (0 == memcmp(buf, "http", 4) || ('/' == buf[0] || '/' == buf[len - 1]));
 }
 //---------------------------------------------------------------
-size_t WorkerCtx::sheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_t skipCount)
+size_t WorkerCtx::sheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_t skipCount, bool spray)
 {
   LonelyTask sheep;
   sheep.action = method;
@@ -69,9 +69,28 @@ size_t WorkerCtx::sheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_
   sheep.root = rootNode;
   sheep.target = node;
 
-  return WebGrep::ForEachOnBranch(node, [this, &sheep](LinkedTask* node)
-  { sheep.target = node; this->sheduleTask(&sheep);},
-  skipCount);
+  if(spray)
+    {
+      return WebGrep::ForEachOnBranch(node, [this, &sheep](LinkedTask* node)
+        {
+          sheep.target = node;
+          this->sheduleTask(&sheep);
+        },
+      skipCount);
+    }
+  //else: make tasks consequent in one thread:
+  this->sheduleFunctor
+  ( [sheep, skipCount, node]()
+    {
+      LonelyTask ltask = sheep;
+      WebGrep::ForEachOnBranch(node, [&ltask](LinkedTask* _node)
+      {
+          ltask.target = _node;
+          ltask.action(_node, ltask.ctx);
+      },
+      skipCount);
+    }
+  );
 }
 
 /** shedule all all nodes of the branch to be executed by given functor.*/
@@ -151,7 +170,8 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
 #ifdef WITH_LIBNEON
   //issue GET request
   size_t pathBegin = FindURLPathBegin(url.data(), url.size());
-  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", url.data() + pathBegin);
+  const char* _path = url.data() + pathBegin;
+  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", _path);
   ne_set_read_timeout(rq.ctx->sess, readTimeOut);
   //parse the results
   int result = ne_request_dispatch(rq.req.get());
@@ -185,7 +205,8 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   g.pageIsReady = true;
 #elif defined(WITH_LIBCURL)
   size_t pathBegin = FindURLPathBegin(url.data(), url.size());
-  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", url.data() + pathBegin);
+  const char* _path = url.data() + pathBegin;
+  WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", _path);
   if (!rq.valid()) {
     return false;
     }
@@ -312,7 +333,6 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
 
           if (end == _page.end() || end >= begin + WebGrep::MaxURLlen
               || (end - begin) <= 1
-              || (isHref && !(*begin == '/' || *begin == 'h'))
               || (!isHref && (begin + 10) > end )
               )
             {
@@ -383,17 +403,6 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
   if (w.pageMatchFinishedCb)
     {
       w.pageMatchFinishedCb(w.rootNode, task);
-    }
-  if (nullptr == ItemLoadAcquire(task->next))
-    {//case it was the last task in the sub-list, emit a signal:
-      if(w.nodeListFinishedCb)
-        {
-          LinkedTask* parent = ItemLoadAcquire(task->parent);
-          if (nullptr != parent)
-            {//notify with first node of this branch
-              w.nodeListFinishedCb(w.rootNode, ItemLoadAcquire(parent->child));
-            }
-        }
     }
   return g.pageIsReady && g.pageIsParsed;
 }

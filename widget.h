@@ -7,11 +7,12 @@
 #include <QTreeWidgetItem>
 #include <memory>
 
+#include "webgrep/linked_task.h"
+
 class QTimer;
 
 namespace WebGrep {
   class Crawler;
-  class LinkedTask;
 }
 
 namespace Ui {
@@ -50,10 +51,10 @@ public slots:
   //selecting parsed page displays it's .html content
   void onItemClicked(QTreeWidgetItem *item, int column);
 
+  void onSinglePageScanned(WebGrep::RootNodePtr rootNode, WebGrep::LinkedTask* node);
 
   //invoked by the parser on each page grep finished
-  void onPageScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode,
-                     WebGrep::LinkedTask* node);
+  void onPagesListScanned(WebGrep::RootNodePtr rootNode, WebGrep::LinkedTask* node);
 
   //sets threads number in runtime:
   void onDialValue(int value);
@@ -69,7 +70,6 @@ private:
   void print(WebGrep::LinkedTask* head, void*);
 
   Ui::Widget *ui;
-  std::shared_ptr<WebGrep::Crawler> crawler;//< the crawler
   std::shared_ptr<QString> bufferedErrorMsg;//< set to display
   bool hasError;
   QTextEdit* webPage, *textDraw;//< primitive HTML renderer, without images etc.
@@ -77,18 +77,21 @@ private:
   QString guiTempString;
   QTimer* checkOutTimer;
 
+  std::shared_ptr<WebGrep::Crawler> crawler;//< the crawler
+
   //stores all downloaded pages and match results in a linked list
-  std::shared_ptr<WebGrep::LinkedTask> mainNode;
+  WebGrep::RootNodePtr mainNode;
 
   struct WidgetConn
   {
     WidgetConn() : node(nullptr), widget(nullptr)
     { }
-    std::shared_ptr<WebGrep::LinkedTask> rootTask;
+    WebGrep::RootNodePtr rootTask;
     WebGrep::LinkedTask* node;
     QTreeWidgetItem* widget;
   };
-  void makeKnown(WebGrep::LinkedTask* task, QTreeWidgetItem* widget, const std::shared_ptr<WebGrep::LinkedTask>& root);
+  void makeKnown(WebGrep::LinkedTask* task, QTreeWidgetItem* widget, const WebGrep::RootNodePtr& root);
+  void makeRootWidget(WebGrep::RootNodePtr rootNode, WebGrep::LinkedTask* node);
 
   std::map<WebGrep::LinkedTask*, WidgetConn> taskWidgetsMap;
   std::map<QTreeWidgetItem*, WebGrep::LinkedTask*> widgetsTaskMap;

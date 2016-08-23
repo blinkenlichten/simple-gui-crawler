@@ -49,7 +49,8 @@ std::shared_ptr<LinkedTask> Crawler::start
 
   try {
     setMaxLinks(maxLinks);
-    if (nullptr == pv->taskRoot || pv->taskRoot->grepVars.targetUrl != url)
+    if (nullptr == pv->taskRoot || pv->taskRoot->grepVars.targetUrl != url
+        || pv->taskRoot->grepVars.matchURLVector.empty() )
       {
         //alloc toplevel node:
         mainTask = LinkedTask::createRootNode();

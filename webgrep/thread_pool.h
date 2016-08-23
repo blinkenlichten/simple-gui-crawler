@@ -24,12 +24,39 @@ struct CallableDoubleFunc
 typedef std::function<bool(CallableFunc_t**, size_t*, size_t)> IteratorFunc_t;
 typedef std::function<bool(CallableDoubleFunc**, size_t*, size_t)> IteratorFunc2_t;
 
+//simple(default) array iteration function: increment a pointer and a counter
+//returns TRUE while last item is not reached
+bool PtrForwardIterationDbl(WebGrep::CallableDoubleFunc** arrayPPtr, size_t* counter, size_t maxValue);
+//same as above, but for function<void()> type
+bool PtrForwardIteration(WebGrep::CallableFunc_t** arrayPPtr, size_t* counter, size_t maxValue);
+
+
+//-------------------------------------------------------------------------
+/** A structure that can be used directly to enqueue tasks to a threads pool.*/
 struct TPool_ThreadData
 {
   TPool_ThreadData() : stopFlag(false), terminateFlag(false)
   {
     workQ.reserve(32);
   }
+
+  /** Serialize functors to this thread. Call notify() later to take effect.
+   * Possible exceptions: bad_alloc.
+   * @return count of items serialized */
+  size_t enqueue(std::unique_lock<std::mutex>& lk,
+                 WebGrep::CallableFunc_t* ftorArray, size_t len,
+                 IteratorFunc_t iterFn = PtrForwardIteration);
+
+  /** Serialize functors to this thread. Call notify() later to take effect.
+   * Possible exceptions: bad_alloc.
+   * @return count of items serialized*/
+  size_t enqueue(std::unique_lock<std::mutex>& lk,
+                 CallableDoubleFunc* array, size_t len,
+                 IteratorFunc2_t iterFn = PtrForwardIterationDbl);
+
+  /** Must be called when the mutex is unlocked.*/
+  void notify() { cond.notify_all();}
+
   std::mutex mu;
   std::condition_variable cond;
   volatile bool stopFlag;     //< tells to stop after finishing current tasks
@@ -41,13 +68,7 @@ struct TPool_ThreadData
 };
 typedef std::shared_ptr<std::thread> ThreadPtr;
 typedef std::shared_ptr<TPool_ThreadData> TPool_ThreadDataPtr;
-
-
-//simple(default) array iteration function: increment a pointer and a counter
-//returns TRUE while last item is not reached
-bool PtrForwardIterationDbl(WebGrep::CallableDoubleFunc** arrayPPtr, size_t* counter, size_t maxValue);
-//same as above, but for function<void()> type
-bool PtrForwardIteration(WebGrep::CallableFunc_t** arrayPPtr, size_t* counter, size_t maxValue);
+//-------------------------------------------------------------------------
 
 
 /** A thread pool that shedules tasks represented as functors,
@@ -115,6 +136,11 @@ public:
    *  but for functors without exception control (they're catched and ignored)*/
   bool submit(WebGrep::CallableFunc_t* ftorArray, size_t len,
               IteratorFunc_t iterFn = PtrForwardIteration, bool spray = true);
+
+  /** Get a one thread handle to serialize things in your own manner,
+   *  be careful with the locks! I hope you known what you're doing.
+   *  @return thread data pointer or NULL if closed(). */
+  TPool_ThreadDataPtr getDataHandle();
 
 
   void close();  //< close the submission of tasks

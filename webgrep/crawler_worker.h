@@ -64,6 +64,10 @@ struct WorkerCtx
   /** Call this one to shedule any task:*/
   std::function<void(CallableFunc_t)> sheduleFunctor;
 
+  /** This is a hack to work with a thread handle to serialize sequential
+   *  functors to one thread. Be careful with the data.*/
+  std::function<WebGrep::TPool_ThreadDataPtr()> getThreadHandle;
+
   //---- callbacks, all three are set by the working functions -------
 
   /** when max. links count reached.*/
@@ -80,8 +84,10 @@ struct WorkerCtx
   typedef bool (*WorkFunc_t)(LinkedTask* task, WorkerCtx& w);
 
   /** shedule all all nodes of the branch(by .next item) to be executed by given method.
+   * @param skipCount: how much branch nodes to skip.
+   * @param spray: TRUE when the tasks are assigned to different threads, FALSE makes them queued to one thread.
    * @return number of items sheduled. */
-  size_t sheduleBranchExec(LinkedTask* node,WorkFunc_t method, uint32_t skipCount = 0);
+  size_t sheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_t skipCount = 0, bool spray = true);
 
   /** shedule all all nodes of the branch(by .next item) to be executed by given functor.
    * @return number of items sheduled. */
