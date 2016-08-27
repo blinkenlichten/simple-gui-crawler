@@ -11,6 +11,7 @@
 
 namespace WebGrep {
 
+const size_t MaxURLlen = 8192;
 
 class WorkerCtx;
 //---------------------------------------------------------------
@@ -163,7 +164,30 @@ static inline std::atomic_uintptr_t& StoreRelease(std::atomic_uintptr_t& atom, L
   atom.store((std::uintptr_t)ptr, std::memory_order_release);
   return atom;
 }
+/** Extracts "site.com:443" from https://site.com:443/some/path */
+std::string ExtractHostPortHttp(const std::string& targetUrl);
 
+/** Returns index of first char after "://" sequence
+ *  or value equal to nmax if not found.
+ * @return nmax if not found.
+*/
+size_t FindURLAddressBegin(const char* str, size_t nmax = std::string::npos);
+
+/** Returns index of first '/' after "://" sequence or string begin if it's absent.
+ * @return nmax if not found.
+*/
+size_t FindURLPathBegin(const char* str, size_t nmax);
+
+//returns position of closing quaote '\"' or other symbols like "'" or ">",
+//if returned value >= (end - strPtr) then the quote is missing
+size_t FindClosingQuote(const char* strPtr, const char* end);
+
+/** Unfold the short link into a full path using info from (targetVars)
+ * @return full URL like http://site.com/some/path/file.html
+*/
+std::string MakeFullPath(const char* url, size_t len,
+                         const std::string& host_and_port,
+                         const WebGrep::GrepVars& targetVars);
 
 }//WebGrep
 

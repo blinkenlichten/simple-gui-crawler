@@ -13,7 +13,9 @@
 
 namespace WebGrep {
 
-
+/** Private implementation of the Crawler.
+ *  Implements start(),stop(), task scheduling.
+*/
 class CrawlerPV : public std::enable_shared_from_this<CrawlerPV>
 {
 public:

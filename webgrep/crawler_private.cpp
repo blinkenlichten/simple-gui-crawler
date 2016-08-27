@@ -55,7 +55,7 @@ void CrawlerPV::start(std::shared_ptr<LinkedTask> neuRootTask, unsigned threadsN
     taskRoot = neuRootTask;
 
     WorkerCtx worker = makeWorkerContext();
-    if (taskRoot->grepVars.pageIsParsed && !forceRebuild)
+    if (nullptr == taskRoot || (taskRoot->grepVars.pageIsParsed && !forceRebuild))
       { //do not re-parse everything if it's ready unless forced to
         return;
       }

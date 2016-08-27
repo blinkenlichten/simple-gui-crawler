@@ -227,32 +227,10 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
   size_t cposition = 0;
   auto func = [this, &cposition, &host_and_port, &targetVariables](LinkedTask* node)
   {
-    if (this == node)
-      { /*skip first*/ return; }
     std::string& turl(node->grepVars.targetUrl);
     turl.assign(targetVariables.matchURLVector[cposition].first,
                 targetVariables.matchURLVector[cposition].second);
-    auto httpPos = turl.find_first_of("http");
-    if (std::string::npos != httpPos && '/' != turl[0])
-      {//neither of http:// or "/resource" link types, abandon the item
-        ++cposition;
-        return;
-      }
-    //deal with local href links: href=/resource.html or leave if href="http://.."
-    //grab http:// or https://
-    auto nodeParent = ItemLoadAcquire(node->parent);
-    if (nullptr == nodeParent) {
-        //case it's the root node:
-        nodeParent = this;
-      }
-
-    std::string localLink = targetVariables.scheme.data(); //"http" or "https"
-    localLink += "://";
-    // append site.com:443
-    localLink += host_and_port;
-    // append local resource URI
-    localLink += turl;
-    turl = localLink;
+    turl = MakeFullPath(turl.data(), turl.size(), host_and_port, targetVariables);
     ++cposition;
   };
 
@@ -265,5 +243,86 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
 }
 
 //---------------------------------------------------------------
+std::string ExtractHostPortHttp(const std::string& targetUrl)
+{
+  std::string url(targetUrl.data());
+  size_t hpos = url.find_first_of("://");
+  if (std::string::npos != hpos)
+    {
+      url = targetUrl.substr(hpos + sizeof("://")-1);
+    }
+  auto slash_pos = url.find_first_of('/');
+  if (std::string::npos != slash_pos)
+    {
+      url.resize(slash_pos);
+    }
+  return url;
+}
+
+size_t FindURLAddressBegin(const char* str, size_t nmax)
+{
+  if (str[0] == '/')
+    return 0;
+
+  size_t pos = 1;
+  const char* ptr = str;
+  static const char semSlash [] = "://";
+  static const size_t szSemSlash = 3;
+  for(; pos < std::min(WebGrep::MaxURLlen,nmax)
+      && ( 0 != ::memcmp(semSlash, ptr, szSemSlash) && ptr[1] != 0x00);
+      ++pos)
+    {
+      ptr = str + pos;
+    }
+  ptr += (':'== ptr[0]? 3 : 0);
+  return ptr[1] == 0x00? nmax : (ptr - str);
+}
+
+size_t FindURLPathBegin(const char* str, size_t nmax)
+{
+  size_t upos = FindURLAddressBegin(str,nmax);
+  if (upos <= nmax)
+    upos = 0;
+  const char* ptr = str;
+  //look for first of '/'
+  for(; ptr[0] != '/' && ptr < str + std::min(nmax,WebGrep::MaxURLlen); ++ptr)
+    {  }
+  return ptr - str;
+}
+
+size_t FindClosingQuote(const char* strPtr, const char* end)
+{
+  //inc pointer until we get on of charactres "\n\">'"
+  auto old = strPtr;
+  for(char c = strPtr[0]; strPtr < end
+      && '\'' != c && '\n' != c && '"' != c && '>' != c; ++strPtr)
+    { c = strPtr[1]; }
+  return strPtr - old;
+}
+
+std::string MakeFullPath(const char* url, size_t len, const std::string& host_and_port, const WebGrep::GrepVars& targetVars)
+{
+  size_t upos = WebGrep::FindURLAddressBegin(url, len);
+  std::string path;
+  if('/' != url[0] && len <= upos) {
+      //case it's a subdirectory without leading '/'
+      path.reserve(targetVars.targetUrl.size() + 2 + len);
+      path = targetVars.targetUrl;
+      path += '/';
+    }
+  else if (0 == upos)
+    {//case starts with '/': "/some/path"
+      path.reserve(4 + targetVars.scheme.size()
+                   + host_and_port.size() + len);
+      path = targetVars.scheme.data(); //"http" or "https"
+      path += "://";
+      // append site.com:443
+      path += host_and_port;
+    }
+  // append local resource URI
+  path += url;
+  return path;
+}
+//-----------------------------------------------------------------
 
 }//WebGrep

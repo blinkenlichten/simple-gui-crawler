@@ -2,14 +2,20 @@
 
 #include <iostream>
 #include <regex>
+
 namespace WebGrep {
 
 //---------------------------------------------------------------
 bool CheckExtension(const char* buf, unsigned len)
 {
-  if (len < 4)
-    {//slashes mean directories:
-      return len > 1 && ('/' == buf[len - 1] || buf[0] == '/');
+  unsigned _pos = 0;
+  unsigned _bound = std::min((unsigned)WebGrep::MaxURLlen,len);
+  for(; _pos < _bound && buf[_pos] != '.'; ++_pos)
+  { /*find a '.' symbol*/}
+
+  if (_pos >= _bound)
+    {//has not dots, consider it to be a folder
+      return true;
     }
   //not interesting files (media, .css):
   static const char* d_file_extensions[ ] = {
@@ -21,44 +27,28 @@ bool CheckExtension(const char* buf, unsigned len)
   //interesting files:
   static const char* d_extensions[ ]
       = {"html",".txt", ".cgi", ".htm", ".asp", ".jsp", ".php", ".rb", ".pl", ".py", "\0"};
-  const char* last4 = buf + len - 4;
+  const char* last4 = buf + _pos;
 
   //since we have only 4 bytes there, lets compare them as uint32_t
-  {
-    uint32_t c = 0;
-    const uint32_t* ptr1 = (const uint32_t*)last4;
+  unsigned idx = 0;
+  const char* ext = d_extensions[idx];
+  uint32_t sz = sizeof(d_extensions)/sizeof(const char*) - 1;
 
-    uint32_t sz = sizeof(d_file_extensions)/sizeof(const char*) - 1;
-
-    const uint32_t* ptr2 = nullptr;
-    for (ptr2 = (unsigned*)d_file_extensions[c];
-         c < sz && *ptr1 != *ptr2;
-         ++c, ptr2 = (const uint32_t*)d_file_extensions[c])
-      {/*break on match*/  }
-    if (c < sz)
-      //got match with a media file, we're not interested
-      return false;
-
-    sz = sizeof(d_extensions)/sizeof(const char*) - 1;
-    c = 0;
-    for (ptr2 = (unsigned*)d_extensions[c];
-         c < sz && *ptr1 != *ptr2;
-         ++c, ptr2 = (const uint32_t*)d_extensions[c])
-      {/*break on match*/  }
-
-    //got match on interesting file extension
-    if (c < sz)
-      return true;
+  {//check for good extensions:
+    for(; idx < sz && 0 == ::memcmp(last4, ext, ::strlen(ext));
+        ++idx, ext = d_extensions[idx]) {  }
+    if (idx < sz)
+      return true;//matches recommended extensions
   }
 
-  //if it contains at least 1 '.' -- then it's not our case
-  bool canHazDot = false;
-  for(uint32_t z = 0; z < 4; ++z)
-    {
-      canHazDot = canHazDot || ('.' == last4[z]);
-    }
-  //otherwise
-  return !canHazDot && (0 == memcmp(buf, "http", 4) || ('/' == buf[0] || '/' == buf[len - 1]));
+  {//check for bad extenstions:
+    idx = 0;
+    ext = d_file_extensions[0];
+    sz = sizeof(d_file_extensions)/sizeof(const char*) - 1;
+    for(; idx < sz && 0 == ::memcmp(last4, ext, ::strlen(ext));
+        ++idx, ext = d_extensions[idx]) {  }
+    return (idx < sz)? false /*match with media extention*/ : true/*not match, return default(TRUE)*/;
+  }
 }
 //---------------------------------------------------------------
 size_t WorkerCtx::sheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_t skipCount, bool spray)
@@ -151,6 +141,8 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
 {
   GrepVars& g(task->grepVars);
   std::string& url(g.targetUrl);
+  std::cerr << "downloading: " << url << "\n";
+
   //try to connect, w.hostPort will be set on success to "site.com:443"
   g.scheme.fill(0);
   w.scheme.fill(0);
@@ -167,15 +159,17 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
       readTimeOut = 8;
     }
 
+  static const char* _defaultSlash = "/";
+  size_t pathBegin  = url.find_first_of('/', FindURLAddressBegin(url.data(), url.size()));
+  const char* _path = (std::string::npos == pathBegin)? _defaultSlash : url.data() + pathBegin;
+
 #ifdef WITH_LIBNEON
   //issue GET request
-  size_t pathBegin = FindURLPathBegin(url.data(), url.size());
-  const char* _path = url.data() + pathBegin;
   WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", _path);
   ne_set_read_timeout(rq.ctx->sess, readTimeOut);
   //parse the results
   int result = ne_request_dispatch(rq.req.get());
-  std::cerr << ne_get_error(rq.ctx->sess);
+  std::cerr << ne_get_error(rq.ctx->sess) << std::endl;
   if (NE_OK != result)
     {
       return false;
@@ -204,8 +198,6 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   g.pageContent = std::move(rq.ctx->response);
   g.pageIsReady = true;
 #elif defined(WITH_LIBCURL)
-  size_t pathBegin = FindURLPathBegin(url.data(), url.size());
-  const char* _path = url.data() + pathBegin;
   WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", _path);
   if (!rq.valid()) {
     return false;
@@ -222,9 +214,9 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
 //end of WITH_LIBCURL
 
 #elif defined(WITH_QTNETWORK)
+  (void)pathBegin; (void)_path;
   //temporary solution for Windows: not using libneon, but QtNetwork instead
   //issue GET request
-  size_t pathBegin = FindURLPathBegin(url.data(), url.size());
   WebGrep::IssuedRequest issue = w.httpClient.issueRequest("GET", url.data() + pathBegin);
   //the manager will dispatch asyncronously
   std::shared_ptr<QNetworkReply> rep = issue.ctx->makeGet(issue.req);
@@ -240,6 +232,7 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   g.pageIsReady = !g.pageContent.empty();
 //WITH_QTNETWORK
 #endif//WITH_LIBNEON
+  std::cerr << "download code: " << g.responseCode << "\n";
 
   return g.pageIsReady;
 }
@@ -313,6 +306,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
               continue;
             }
 
+          //find opening quote:
           linkPos = _page.find_first_of('"', linkPos);
           linkPos++;
           //make new iterators that point to g.pageContent
@@ -320,15 +314,8 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
           begin += isHref? linkPos : pos;
           auto end = begin;
 
-          auto find_quote2 = [](const char* strPtr, const char* end) -> size_t
-          {//inc pointer until we get on of charactres "\n\">'"
-              auto old = strPtr;
-              for(char c = strPtr[0]; strPtr < end
-                  && '\'' != c && '\n' != c && '"' != c && '>' != c; ++strPtr)
-                { c = strPtr[1]; }
-              return strPtr - old;
-          };
-          end += find_quote2((const char*)&(*begin), _page.data()
+          //find closing quote \" or other character like '>'
+          end += FindClosingQuote((const char*)&(*begin), _page.data()
                                     + std::min((size_t)WebGrep::MaxURLlen, _page.size()));
 
           if (end == _page.end() || end >= begin + WebGrep::MaxURLlen
@@ -338,9 +325,12 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
             {
               continue;
             }
-          std::string temp;
-          temp.assign(begin, end);
-          matches[temp] = GrepVars::CIteratorPair(begin, end);
+          /**Make full path URL and pass to the matches map:
+           * possible pairs:
+           * (key: http://site.com/some/path/file.txt, value: "some/path/file.txt")
+           * Why should we do it? key's full path is needed to avoid recursive calls when some links
+           * in the page's text point to a path that has been scanned already. **/
+          matches[MakeFullPath(&(*begin), end - begin, w.hostPort, g)] = GrepVars::CIteratorPair(begin, end);
           pos += (end - begin);
         }
 
@@ -377,8 +367,22 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
               continue;//skip link to main page
             }
           //filter which content we allow to be scanned:
-          if (WebGrep::CheckExtension(key.data(), key.size())
-              && key != g.targetUrl) //avoid scanning self again
+          bool extFilter = WebGrep::CheckExtension(key.data(), key.size()) && key != g.targetUrl;
+          LinkedTask* _root = WebGrep::ItemLoadAcquire(task->root);
+
+          bool traversalFilter = !(_root->grepVars.targetUrl == key);
+
+          //traverse the tree up to the root and exclude current match
+          //if it coincides with one of the parent nodes:
+          LinkedTask* _node = WebGrep::ItemLoadAcquire(task->parent);
+          for( ;
+              nullptr != _node && _root != _node && traversalFilter;
+              _node = WebGrep::ItemLoadAcquire(task->parent))
+            {
+              traversalFilter = traversalFilter && !(_node->grepVars.targetUrl == key);
+            }
+
+          if (extFilter && traversalFilter) //avoid scanning self again
             {
               g.matchURLVector.push_back((*iter).second);
             }

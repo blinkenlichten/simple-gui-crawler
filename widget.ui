@@ -252,6 +252,9 @@
           <property name="sliderPosition">
            <number>4</number>
           </property>
+          <property name="tracking">
+           <bool>false</bool>
+          </property>
           <property name="notchTarget">
            <double>3.700000000000000</double>
           </property>

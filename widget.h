@@ -68,6 +68,7 @@ private slots:
 private:
 
   void print(WebGrep::LinkedTask* head, void*);
+  void updateRenderNodes(WebGrep::RootNodePtr rootNode, WebGrep::LinkedTask* node);
 
   Ui::Widget *ui;
   std::shared_ptr<QString> bufferedErrorMsg;//< set to display

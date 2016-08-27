@@ -6,40 +6,10 @@
 #include <stdio.h>
 #include <iostream>
 #include <exception>
+#include "linked_task.h"
 
 namespace WebGrep {
 
-std::string ExtractHostPortHttp(const std::string& targetUrl)
-{
-  std::string url(targetUrl.data());
-  size_t hpos = url.find_first_of("://");
-  if (std::string::npos != hpos)
-    {
-      url = targetUrl.substr(hpos + sizeof("://")-1);
-    }
-  auto slash_pos = url.find_first_of('/');
-  if (std::string::npos != slash_pos)
-    {
-      url.resize(slash_pos);
-    }
-  return url;
-}
-size_t FindURLPathBegin(const char* str, size_t nmax)
-{
-  if (str[0] == '/')
-    return 0;
-
-  size_t pos = 1;
-  const char* ptr = str + 1;
-  for(; pos < std::min(WebGrep::MaxURLlen,nmax)
-      && !(ptr[0] != ':' && ptr[0] != '/' && ptr[1] == '/');
-      ++pos)
-    {
-      ptr = str + pos;
-    }
-  return 1 + (ptr - str);
-}
-//-----------------------------------------------------------------
 //-----------------------------------------------------------------
 const char* Client::scheme() const
 {

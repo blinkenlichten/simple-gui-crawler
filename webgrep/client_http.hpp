@@ -12,12 +12,6 @@
 /** Modified version from https://github.com/eidheim/Simple-Web-Server */
 namespace WebGrep {
 
-const size_t MaxURLlen = 8192;
-
-std::string ExtractHostPortHttp(const std::string& targetUrl);
-size_t FindURLPathBegin(const char* str, size_t nmax = std::string::npos);
-
-//-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 /** Contains connection context and it's dependant request tasks,
  * the destructor will clean up it all.
