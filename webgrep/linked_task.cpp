@@ -225,12 +225,13 @@ size_t LinkedTask::spawnGreppedSubtasks(const std::string& host_and_port, const 
     }
 
   size_t cposition = 0;
-  auto func = [this, &cposition, &host_and_port, &targetVariables](LinkedTask* node)
+  auto func = [this, &cposition, &host_and_port, &targetVariables](LinkedTask* _node)
   {
-    std::string& turl(node->grepVars.targetUrl);
+    std::string& turl(_node->grepVars.targetUrl);
     turl.assign(targetVariables.matchURLVector[cposition].first,
                 targetVariables.matchURLVector[cposition].second);
     turl = MakeFullPath(turl.data(), turl.size(), host_and_port, targetVariables);
+    std::cerr << "spawn: " << turl << "\n";
     ++cposition;
   };
 
@@ -268,14 +269,17 @@ size_t FindURLAddressBegin(const char* str, size_t nmax)
   const char* ptr = str;
   static const char semSlash [] = "://";
   static const size_t szSemSlash = 3;
-  for(; pos < std::min(WebGrep::MaxURLlen,nmax)
-      && ( 0 != ::memcmp(semSlash, ptr, szSemSlash) && ptr[1] != 0x00);
-      ++pos)
+  size_t _bound = std::min(WebGrep::MaxURLlen,nmax);
+  for(; pos < _bound && ( 0 != ::memcmp(semSlash, ptr, szSemSlash)); ++pos)
     {
       ptr = str + pos;
     }
-  ptr += (':'== ptr[0]? 3 : 0);
-  return ptr[1] == 0x00? nmax : (ptr - str);
+  if (pos < _bound)
+    {
+      ptr += (':'== ptr[0]? 3 : 0);
+      return ptr - str;
+    }
+  return nmax;
 }
 
 size_t FindURLPathBegin(const char* str, size_t nmax)
@@ -292,11 +296,17 @@ size_t FindURLPathBegin(const char* str, size_t nmax)
 
 size_t FindClosingQuote(const char* strPtr, const char* end)
 {
-  //inc pointer until we get on of charactres "\n\">'"
+  //inc pointer until we get on of stop charactres
   auto old = strPtr;
-  for(char c = strPtr[0]; strPtr < end
-      && '\'' != c && '\n' != c && '"' != c && '>' != c; ++strPtr)
-    { c = strPtr[1]; }
+  static const char stopChars[] = "\"'\n> <\0";
+  for(char c = strPtr[0]; strPtr < end; c = *(++strPtr))
+    {
+      for(uint32_t z = 0; z < sizeof(stopChars) - 1; ++z)
+        {
+          if (c == stopChars[z])
+            return strPtr - old;
+        }
+    }
   return strPtr - old;
 }
 
@@ -320,7 +330,9 @@ std::string MakeFullPath(const char* url, size_t len, const std::string& host_an
       path += host_and_port;
     }
   // append local resource URI
-  path += url;
+  size_t appendPos = path.size();
+  path.resize(path.size() + len);
+  ::memcpy(&path[appendPos], url, len);
   return path;
 }
 //-----------------------------------------------------------------

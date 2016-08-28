@@ -61,9 +61,10 @@ size_t WorkerCtx::sheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_
 
   if(spray)
     {
-      return WebGrep::ForEachOnBranch(node, [this, &sheep](LinkedTask* node)
+      return WebGrep::ForEachOnBranch(node, [this, &sheep](LinkedTask* _node)
         {
-          sheep.target = node;
+          std::cerr << "scheduling task:: " << _node->grepVars.targetUrl << "\n";
+          sheep.target = _node;
           this->sheduleTask(&sheep);
         },
       skipCount);
@@ -90,53 +91,6 @@ size_t WorkerCtx::sheduleBranchExecFunctor(LinkedTask* task, std::function<void(
 }
 
 //---------------------------------------------------------------
-void PostProcHrefLinks(std::map<std::string, GrepVars::CIteratorPair>& out,
-                       const std::smatch& matchURL,
-                       GrepVars& g)
-{
-  std::string temp;
-  temp.reserve(256);
-
-  for(size_t matchIdx = 0; matchIdx < matchURL.size(); ++matchIdx)
-    {
-      auto subitem = &(matchURL[matchIdx]);
-      auto diff = subitem->second - subitem->first;
-      temp.resize(diff);
-      auto shift = matchURL.position(matchIdx);
-      auto matchPageBegin = g.pageContent.begin() + shift;
-      temp.assign(matchPageBegin, matchPageBegin + shift);
-
-      const char href[] = "href";
-      const uint32_t hrefSz = sizeof(href) - 1;
-      size_t hrefPos = temp.find(href,0,4);
-      if (hrefPos == std::string::npos)
-        {
-          //case just http://
-          auto page_pos = g.pageContent.begin() + matchURL.position(matchIdx);
-          out[temp] = GrepVars::CIteratorPair(page_pos, page_pos + diff);
-          continue;
-        }
-      for(; hrefPos != std::string::npos;
-          hrefPos = temp.find_first_of(href, hrefPos + hrefSz, hrefSz) )
-        {
-          //case href
-          auto quotePos = temp.find_first_of('=',hrefPos);
-          quotePos = temp.find_first_of('"', quotePos);
-          quotePos++;
-          //make new iterators that point to g.pageContent
-          auto begin = matchPageBegin + quotePos;
-          auto end = begin;
-          auto quote2 = temp.find_first_of('"', quotePos);
-          if (quote2 != std::string::npos)
-            end += (size_t)(quote2 - quotePos);
-          temp.assign(begin, end);
-          out[temp] = GrepVars::CIteratorPair(begin, end);
-        }
-    }
-
-}
-//---------------------------------------------------------------
-
 bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
 {
   GrepVars& g(task->grepVars);
@@ -199,13 +153,16 @@ bool FuncDownloadOne(LinkedTask* task, WorkerCtx& w)
   g.pageIsReady = true;
 #elif defined(WITH_LIBCURL)
   WebGrep::IssuedRequest rq = w.httpClient.issueRequest("GET", _path);
-  if (!rq.valid()) {
-    return false;
+  if (!rq.valid())
+    {
+      return false;
     }
 
   curl_easy_setopt(rq.ctx->curl, CURLOPT_TIMEOUT, readTimeOut/*seconds*/);
+  curl_easy_setopt(rq.ctx->curl, CURLOPT_FOLLOWLOCATION, 1);
   rq.res = curl_easy_perform(rq.ctx->curl);
   rq.ctx->status = rq.res;
+  curl_easy_getinfo (rq.ctx->curl, CURLINFO_RESPONSE_CODE, &(g.responseCode));
   g.pageContent = std::move(rq.ctx->response);
   g.pageIsReady = (rq.res == CURLE_OK);
   rq.ctx->disconnect();
@@ -330,7 +287,8 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
            * (key: http://site.com/some/path/file.txt, value: "some/path/file.txt")
            * Why should we do it? key's full path is needed to avoid recursive calls when some links
            * in the page's text point to a path that has been scanned already. **/
-          matches[MakeFullPath(&(*begin), end - begin, w.hostPort, g)] = GrepVars::CIteratorPair(begin, end);
+          auto fullpath = MakeFullPath(&(*begin), end - begin, w.hostPort, g);
+          matches[fullpath] = GrepVars::CIteratorPair(begin, end);
           pos += (end - begin);
         }
 
@@ -377,7 +335,7 @@ bool FuncGrepOne(LinkedTask* task, WorkerCtx& w)
           LinkedTask* _node = WebGrep::ItemLoadAcquire(task->parent);
           for( ;
               nullptr != _node && _root != _node && traversalFilter;
-              _node = WebGrep::ItemLoadAcquire(task->parent))
+              _node = WebGrep::ItemLoadAcquire(_node->parent))
             {
               traversalFilter = traversalFilter && !(_node->grepVars.targetUrl == key);
             }
@@ -453,7 +411,7 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w)
   //call self by sending tasks calling this method to different threads
   //(tasks ventillation)
   std::cerr << __FUNCTION__ << " scheduling " << n_subtasks << " tasks more.\n";
-  w.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 1);
+  w.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 0, true);
   return true;
 }
 

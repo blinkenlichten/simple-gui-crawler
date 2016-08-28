@@ -27,7 +27,7 @@ struct GrepVars
   std::string targetUrl;
 
   std::regex grepExpr;  //< regexp to be matched
-  int responseCode;       //< last HTTP GET response code
+  long responseCode;       //< last HTTP GET response code
 
   std::string pageContent;//< html content
 

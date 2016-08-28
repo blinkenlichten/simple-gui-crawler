@@ -242,8 +242,8 @@ void Widget::updateRenderNodes(WebGrep::RootNodePtr rootNode, WebGrep::LinkedTas
   std::function<void(WebGrep::LinkedTask*)> makeWItem
       = [this, &pwidget, &lastItem](WebGrep::LinkedTask* _node)
   {
-      if(!_node->grepVars.pageIsReady)
-        { return; }
+//      if(!_node->grepVars.pageIsReady)
+//        { return; }
       QTreeWidgetItem* item = new QTreeWidgetItem((QTreeWidgetItem*)pwidget);
       Widget::describe(this->guiTempString, _node);
       item->setText(0, this->guiTempString);
