@@ -16,6 +16,8 @@ typedef std::function<void()> CallableFunc_t;
 /** encapsulates a callable and an exception callback.*/
 struct CallableDoubleFunc
 {
+  CallableDoubleFunc() { tag.fill(0x00); }
+  std::array<char, 16> tag;
   WebGrep::CallableFunc_t functor;
   std::function<void(const std::exception&)> cbOnException;
 };
@@ -71,7 +73,7 @@ typedef std::shared_ptr<TPool_ThreadData> TPool_ThreadDataPtr;
 //-------------------------------------------------------------------------
 
 
-/** A thread pool that shedules tasks represented as functors,
+/** A thread pool that schedules tasks represented as functors,
  *  similar to boost::basic_thread_pool.
  *  It never throws except the constructor where only bad_alloc can occur.
  *

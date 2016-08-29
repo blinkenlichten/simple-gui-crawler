@@ -19,10 +19,9 @@ struct Maker
         {
           //move and export tasks that are left there:
           std::unique_lock<std::mutex> lk(dataPtr->mu);
-          dataPtr->exportTaskFn(&localArray[0], localArray.size());
-          pull(dataPtr);
-          //export pulled tasks that won't be exec. here:
-          dataPtr->exportTaskFn(&localArray[0], localArray.size());
+          dataPtr->exportTaskFn(&localArray[pos], localArray.size() - pos);
+          localArray.clear();
+          dataPtr->exportTaskFn(&(dataPtr->workQ[0]), dataPtr->workQ.size());
 
         } else if (!dataPtr->terminateFlag)
         {//finish the jobs left there:
@@ -40,16 +39,19 @@ struct Maker
   void pull(const TPool_ThreadDataPtr& td)
   {
     //move task queue to local array
-    localArray = std::move(td->workQ);
-    pos = 0;
+    for(CallableDoubleFunc& f : td->workQ)
+      {
+//        if(f.tag[0] != '\0')
+//          std::cerr << "pulled for making: " << f.tag.data() << "\n";
+        localArray.push_back(f);
+      }
     td->workQ.clear();
   }
   void exec(volatile bool& term_flag)
   {
-    size_t k = pos;
-    for(; k < localArray.size() && !term_flag; ++k)
+    for(; pos < localArray.size() && !term_flag; ++pos)
       {
-        CallableDoubleFunc& pair(localArray[k]);
+        CallableDoubleFunc& pair(localArray[pos]);
         try {
           if (nullptr != pair.functor)
             pair.functor();
@@ -60,8 +62,12 @@ struct Maker
             pair.cbOnException(ex);
         }
       }//for
-
-    pos = k;
+    //clear if was not interrupted:
+    if (pos == localArray.size())
+      {
+        localArray.clear();
+        pos = 0;
+      }
   }
   TPool_ThreadDataPtr dataPtr;
   size_t pos;//position
@@ -107,7 +113,10 @@ void ThreadsPool_processingLoop(const TPool_ThreadDataPtr& td)
   while(!td->stopFlag)
     {
       std::unique_lock<std::mutex> lk(td->mu);
-      td->cond.wait(lk);
+      if (taskM.pos >= taskM.localArray.size() && td->workQ.empty())
+        {
+          td->cond.wait(lk);
+        }
       taskM.pull(td);
       lk.unlock();
 

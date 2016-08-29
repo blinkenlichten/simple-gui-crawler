@@ -33,7 +33,7 @@ void CrawlerPV::start(std::shared_ptr<LinkedTask> neuRootTask, unsigned threadsN
         workersPool->terminateDetach();
       }
     else
-      {//stop temporarly, with tasks re-sheduling
+      {//stop temporarly, with tasks re-scheduling
         stop();
       }
 
@@ -45,11 +45,23 @@ void CrawlerPV::start(std::shared_ptr<LinkedTask> neuRootTask, unsigned threadsN
 
     if(taskRoot == neuRootTask)
       { //submit previously abandoned tasks due to stop()
-        std::lock_guard<std::mutex> lk(slockLonelyFunctors); (void)lk;
-        if (!lonelyFunctorsVector.empty())
-          {
-            workersPool->submit(&lonelyFunctorsVector[0], lonelyFunctorsVector.size());
-          }
+        {
+          std::lock_guard<std::mutex> lk(slockLonelyFunctors); (void)lk;
+          if (!lonelyFunctorsVector.empty())
+            {
+              workersPool->submit(&lonelyFunctorsVector[0], lonelyFunctorsVector.size());
+            }
+          lonelyFunctorsVector.clear();
+        }
+        {
+          std::unique_lock<CrawlerPV::LonelyLock_t> lk(slockLonely);
+          if(!lonelyVector.empty())
+            {
+              WebGrep::LonelyTask fake;
+              lk.unlock();
+              scheduleTask(fake, true/*force to schedule abandoned tasks*/);
+            }
+        }
       }
 
     taskRoot = neuRootTask;
@@ -77,7 +89,7 @@ void CrawlerPV::start(std::shared_ptr<LinkedTask> neuRootTask, unsigned threadsN
     worker.childLevelSpawned(taskRoot,child);
     //we have grepped N URLs from the first page
     //ventillate them as subtasks:
-    worker.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 0 );
+    worker.scheduleBranchExec(child, &FuncDownloadGrepRecursive, 0 );
   } catch(const std::exception& ex)
   {
     if(onException)
@@ -97,7 +109,7 @@ void CrawlerPV::stop()
       (void)lk;
       for(size_t c = 0; c < len; ++c)
         {
-          this_shared->lonelyFunctorsVector.push_back(dfuncArray[c].functor);
+          this_shared->lonelyFunctorsVector.push_back(dfuncArray[c]);
         }
   };
   //terminate the tasks manager and export abandoned tasks here:
@@ -140,14 +152,14 @@ WorkerCtx CrawlerPV::makeWorkerContext()
   ctx.pageMatchFinishedCb = crawlerImpl->onSingleNodeScanned;
   ctx.childLevelSpawned = crawlerImpl->onLevelSpawned;
 
-  ctx.sheduleTask = [crawlerImpl](const LonelyTask* task)
+  ctx.scheduleTask = [crawlerImpl](const LonelyTask* task)
   {
-      crawlerImpl->sheduleTask(*task);
+      crawlerImpl->scheduleTask(*task);
   };
 
-  ctx.sheduleFunctor = [crawlerImpl](CallableFunc_t func)
+  ctx.scheduleFunctor = [crawlerImpl](CallableDoubleFunc func)
   {
-    crawlerImpl->sheduleFunctor(func);
+    crawlerImpl->scheduleFunctor(func);
   };
   ctx.getThreadHandle = [crawlerImpl]() -> TPool_ThreadDataPtr
   {
@@ -156,11 +168,11 @@ WorkerCtx CrawlerPV::makeWorkerContext()
   return ctx;
 }
 //---------------------------------------------------------------
-bool CrawlerPV::sheduleTask(const WebGrep::LonelyTask& task)
+bool CrawlerPV::scheduleTask(const WebGrep::LonelyTask& task, bool resendAbandonedTasks)
 {
   try {
     if (workersPool->closed())
-      {//shedule abandoned task to a vector while we're managing threads:
+      {//schedule abandoned task to a vector while we're managing threads:
         std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonely); (void)lk;
         lonelyVector.push_back(task);
         return true;
@@ -170,15 +182,21 @@ bool CrawlerPV::sheduleTask(const WebGrep::LonelyTask& task)
         WorkerCtx ctx_copy = task.ctx;
         task.action(task.target, ctx_copy);
       });
+    if (!resendAbandonedTasks)
+      {
+        return true;
+      }
 
     //pull out and submit previously abandoned tasks:
     std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonely); (void)lk;
     for(const LonelyTask& alone : lonelyVector)
       {
-        workersPool->submit([alone](){
-            LonelyTask sheep = alone;
-            sheep.action(sheep.target, sheep.ctx);
-          });
+        if (nullptr != alone.action) {
+            workersPool->submit([alone](){
+                LonelyTask sheep = alone;
+                sheep.action(sheep.target, sheep.ctx);
+            });
+        }
       }
     lonelyVector.clear();
   } catch(std::exception& ex)
@@ -191,7 +209,7 @@ bool CrawlerPV::sheduleTask(const WebGrep::LonelyTask& task)
 
 }
 //-----------------------------------------------------------------
-bool CrawlerPV::sheduleFunctor(CallableFunc_t func)
+bool CrawlerPV::scheduleFunctor(CallableDoubleFunc func, bool resendAbandonedTasks)
 {
   try {
     if (workersPool->closed())
@@ -204,10 +222,14 @@ bool CrawlerPV::sheduleFunctor(CallableFunc_t func)
     workersPool->submit(func);
 
     //submit delayed tasks from the vector:
-    std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonelyFunctors); (void)lk;
-    for(CallableFunc_t& func : lonelyFunctorsVector)
+    if (!resendAbandonedTasks)
       {
-        workersPool->submit(std::move(func));
+        return true;
+      }
+    std::lock_guard<CrawlerPV::LonelyLock_t> lk(slockLonelyFunctors); (void)lk;
+    for(CallableDoubleFunc& func : lonelyFunctorsVector)
+      {
+        workersPool->submit(func);
       }
     lonelyFunctorsVector.clear();
   } catch(std::exception& ex)

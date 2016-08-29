@@ -15,92 +15,92 @@ namespace ThreadPoolTests {
 
 using namespace WebGrep;
 
-/** Test submission of ThreadPool tasks from data structure with custom iterator functor.*/
+//helper class for test1() : linked list with functors
+class LList : public std::enable_shared_from_this<LList>
+{
+public:
+  explicit LList(std::atomic_uint& ref, uint32_t i = 0)
+    : pref(&ref), idx(i)
+  {
+    //set up a sinle task functor
+    dfunc.functor = [this](){ ;
+        pref->fetch_add(1);
+        throw std::logic_error("just checking reaction for fake error...");
+      };
+    dfunc.cbOnException = [this](const std::exception& ex)
+    {
+      };
+  }
+  uint32_t idx;
+  WebGrep::CallableDoubleFunc dfunc;
+  std::shared_ptr<LList> next;
+  std::atomic_uint* pref;
+};
+
+
+//helper class for test1(), starts a task and checks the result
+class TestItems
+{
+public:
+  static const unsigned _N = 50;
+  static const unsigned _N_dispatch_tests = 10;
+
+  TestItems() : result(false)
+  {
+    g_cnt.store(0);
+    ltask = LinkedTask::createRootNode();
+    spawned = ltask->spawnNextNodes(_N);
+    head = std::make_shared<LList>(g_cnt, 0);
+    list_cur_ptr = head;
+
+    uint32_t cnt = 0;
+    WebGrep::ForEachOnBranch(ltask.get(),
+                             [&cnt, this](LinkedTask*)
+    {
+        list_cur_ptr->next = std::make_shared<LList>(g_cnt, 1000 + (++cnt));
+        list_cur_ptr = list_cur_ptr->next;
+      }, 0);
+
+  }
+  bool success()
+  {
+    auto value = g_cnt.load();
+    return _N_dispatch_tests * (2 + _N) == value;
+  }
+  void dispatch(ThreadsPool& pool)
+  {
+    list_cur_ptr = head;
+
+    //the iterator functor:
+    ifunc = [this](WebGrep::CallableDoubleFunc** pptr, size_t*, size_t) -> bool
+    {//a functor that is iteration interface on LList class items
+      if (nullptr != list_cur_ptr->next)
+        {
+          *pptr = &(list_cur_ptr->dfunc);
+          list_cur_ptr = list_cur_ptr->next;
+          return true;
+        }
+      return false;
+    };
+    //submit array of tasks with custom iteration functor, no spray (all to same thread)
+    pool.submit(&(head->dfunc), 0, ifunc, false);
+  }
+
+  bool result;
+  std::atomic_uint g_cnt;
+  std::shared_ptr<WebGrep::LinkedTask> ltask;
+  size_t spawned;
+  //functor that works as iterator on head->dfunc tasks within the linked list
+  WebGrep::IteratorFunc2_t ifunc;
+  std::shared_ptr<LList> head, list_cur_ptr;
+};
+
+/** TODO: fix this test, it's body is complicated.
+ * Test submission of ThreadPool tasks from data structure with custom iterator functor.*/
 bool test1()
 {
 
-  ThreadsPool pool(4);
-
-  class LList : public std::enable_shared_from_this<LList>
-  {
-  public:
-    explicit LList(std::atomic_uint& ref, uint32_t i = 0)
-      : pref(&ref), idx(i)
-    {
-      //set up a sinle task functor
-      dfunc.functor = [this](){ ;
-//          std::cerr << "working item " << idx << std::endl;
-          pref->fetch_add(1);
-          throw std::logic_error("just checking reaction for fake error...");
-        };
-      dfunc.cbOnException = [this](const std::exception& ex)
-      {
-//          std::cerr << "idx: " << idx << " " << ex.what() << std::endl;
-      };
-    }
-    uint32_t idx;
-    WebGrep::CallableDoubleFunc dfunc;
-    std::shared_ptr<LList> next;
-    std::atomic_uint* pref;
-  };
-
-  class TestItems
-  {
-  public:
-    const unsigned _N = 50;
-
-    TestItems() : result(false)
-    {
-      g_cnt.store(0);
-      ltask = LinkedTask::createRootNode();
-      spawned = ltask->spawnNextNodes(_N);
-      head = std::make_shared<LList>(g_cnt, 0);
-      list_cur_ptr = head;
-
-      uint32_t cnt = 0;
-      WebGrep::ForEachOnBranch(ltask.get(),
-                               [&cnt, this](LinkedTask*)
-      {
-          list_cur_ptr->next = std::make_shared<LList>(g_cnt, 1000 + (++cnt));
-          list_cur_ptr = list_cur_ptr->next;
-        }, 0);
-
-    }
-    bool success()
-    {
-      auto value = g_cnt.load();
-      result = (2 + _N) == value;
-      return result;
-    }
-    void dispatch(ThreadsPool& pool)
-    {
-      g_cnt.store(0);
-      list_cur_ptr = head;
-
-      //the iterator functor:
-      ifunc = [this](WebGrep::CallableDoubleFunc** pptr, size_t*, size_t) -> bool
-      {//a functor that is iteration interface on LList class items
-        if (nullptr != list_cur_ptr->next)
-          {
-            *pptr = &(list_cur_ptr->dfunc);
-            list_cur_ptr = list_cur_ptr->next;
-            return true;
-          }
-        return false;
-      };
-      //submit array of tasks with custom iteration functor, no spray (all to same thread)
-      pool.submit(&(head->dfunc), 0, ifunc, false);
-    }
-
-    bool result;
-    std::atomic_uint g_cnt;
-    std::shared_ptr<WebGrep::LinkedTask> ltask;
-    size_t spawned;
-    //functor that works as iterator on head->dfunc tasks within the linked list
-    WebGrep::IteratorFunc2_t ifunc;
-    std::shared_ptr<LList> head, list_cur_ptr;
-  };
-
+  ThreadsPool pool(6);
 
   //array of test items, each will dispatch own tasks
   std::vector<std::shared_ptr<TestItems>> testArray;
@@ -110,31 +110,36 @@ bool test1()
       test = std::make_shared<TestItems>();
     }
 
-  unsigned idx = 0;
 
   //threaded dispatch : one thread for each test
   std::vector<std::thread> threadsArray;
   threadsArray.resize(testArray.size());
 
+  unsigned idx = 0;
   for(std::thread& thr: threadsArray)
     {
-      std::shared_ptr<TestItems> testp = testArray[(idx++) % testArray.size()];
+      std::shared_ptr<TestItems> testp = testArray[idx++];
       thr = std::thread
       (
          [testp, &pool](){
-         for(uint32_t z = 0; z < 10; ++z)
+         //submit each item (TestItems::_N_dispatch_tests) times
+         for(uint32_t z = 0; z < TestItems::_N_dispatch_tests; ++z)
            {
              testp->dispatch(pool);
-             std::this_thread::sleep_for(std::chrono::milliseconds(10 - z));
+             //make time shift:
+             std::this_thread::sleep_for(std::chrono::milliseconds(TestItems::_N_dispatch_tests - z));
            }
         }
       );
     }
+  //join submission threads:
   for(std::thread& thr: threadsArray)
     { thr.join(); }
 
+  //join pool threads in separate thread (just for test)
   std::thread t([&pool](){pool.joinAll();});
   t.join();
+  //check success:
   bool ok = true;
   for(std::shared_ptr<TestItems>& test : testArray)
     {

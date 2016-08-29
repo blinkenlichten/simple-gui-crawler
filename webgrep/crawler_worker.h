@@ -57,12 +57,12 @@ struct WorkerCtx
 
   std::function<void(const std::string& )> onException;
 
-  /** Called by functions to shedule FuncDownloadGrepRecursive.
+  /** Called by functions to schedule FuncDownloadGrepRecursive.
    * The pointer is not used, it's object is copied */
-  std::function<void(const LonelyTask*)> sheduleTask;
+  std::function<void(const LonelyTask*)> scheduleTask;
 
-  /** Call this one to shedule any task:*/
-  std::function<void(CallableFunc_t)> sheduleFunctor;
+  /** Call this one to schedule any task:*/
+  std::function<void(CallableDoubleFunc)> scheduleFunctor;
 
   /** This is a hack to work with a thread handle to serialize sequential
    *  functors to one thread. Be careful with the data.*/
@@ -83,15 +83,15 @@ struct WorkerCtx
   //some utilities as methods:
   typedef bool (*WorkFunc_t)(LinkedTask* task, WorkerCtx& w);
 
-  /** shedule all all nodes of the branch(by .next item) to be executed by given method.
+  /** schedule all all nodes of the branch(by .next item) to be executed by given method.
    * @param skipCount: how much branch nodes to skip.
    * @param spray: TRUE when the tasks are assigned to different threads, FALSE makes them queued to one thread.
-   * @return number of items sheduled. */
-  size_t sheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_t skipCount = 0, bool spray = true);
+   * @return number of items scheduled. */
+  size_t scheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_t skipCount = 0, bool spray = true);
 
-  /** shedule all all nodes of the branch(by .next item) to be executed by given functor.
-   * @return number of items sheduled. */
-  size_t sheduleBranchExecFunctor(LinkedTask* task, std::function<void(LinkedTask*)> functor,
+  /** schedule all all nodes of the branch(by .next item) to be executed by given functor.
+   * @return number of items scheduled. */
+  size_t scheduleBranchExecFunctor(LinkedTask* task, std::function<void(LinkedTask*)> functor,
                                   uint32_t skipCount = 0);
 
 };

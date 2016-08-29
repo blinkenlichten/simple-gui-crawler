@@ -16,9 +16,23 @@ const char* Client::scheme() const
   return (nullptr == ctx)? nullptr : ctx->scheme.data();
 }
 
+const char* Client::hostPort() const
+{
+  return (nullptr == ctx)? nullptr : ctx->host_and_port.data();
+}
+
 uint16_t Client::port() const
 {
   return (nullptr == ctx)? 0u : ctx->port;
+}
+
+const char* Client::connect(const char* httpURL)
+{
+  if(nullptr != httpURL)
+    {
+      connect(std::string(httpURL));
+    }
+  return hostPort();
 }
 
 #ifdef WITH_LIBNEON
@@ -40,6 +54,7 @@ std::string Client::connect(const std::string& httpURL)
     return std::string();
 
   ctx = std::make_shared<ClientCtx>();
+  ctx->scheme.fill(0x00);
   ::memcpy(ctx->scheme.data(), httpURL.data(), colpos);
 
   for(unsigned c = 0; c < 5; ++c)

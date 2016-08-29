@@ -159,7 +159,7 @@ void Widget::describe(QString& str, WebGrep::LinkedTask* node)
     {
       str.sprintf("url: %s (GET code: %d) (Status: %s )",
                             g.targetUrl.data(), g.responseCode,
-                            g.pageIsReady? "downloaded" : "pending in the queue");
+                            g.responseCode == 200? "downloaded" : "error");
     }
   else
     {

@@ -44,13 +44,13 @@ public:
   //spawn a context and bind to shared_from_this()
   WorkerCtx makeWorkerContext();
 
-  //this method serves as sheduling method for objects LonelyTask (Task pointers basically)
+  //this method serves as scheduling method for objects LonelyTask (Task pointers basically)
   //@return FALSE on exception (like bad alloc etc.)
-  bool sheduleTask(const WebGrep::LonelyTask& task);
+  bool scheduleTask(const WebGrep::LonelyTask& task, bool resendAbandonedTasks = false);
 
-  //this method serves as sheduling method for functors
+  //this method serves as scheduling method for functors
   //@return FALSE on exception (like bad alloc etc.)
-  bool sheduleFunctor(CallableFunc_t func);
+  bool scheduleFunctor(CallableDoubleFunc func, bool resendAbandonedTasks = false);
 
   /** It will suspend current tasks by hiding them into a "pocket",
    *  from where it can be pulled out and processed later. */
@@ -119,9 +119,9 @@ public:
   typedef std::mutex LonelyLock_t;
   LonelyLock_t slockLonely, slockLonelyFunctors;
 
-  //these are keeping abandoned tasks that should be resheduled
+  //these are keeping abandoned tasks that should be rescheduled
   std::vector<WebGrep::LonelyTask> lonelyVector;
-  std::vector<WebGrep::CallableFunc_t> lonelyFunctorsVector;
+  std::vector<WebGrep::CallableDoubleFunc> lonelyFunctorsVector;
 };
 
 }//namespace WebGrep

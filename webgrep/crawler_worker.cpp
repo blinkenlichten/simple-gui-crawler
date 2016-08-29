@@ -51,41 +51,51 @@ bool CheckExtension(const char* buf, unsigned len)
   }
 }
 //---------------------------------------------------------------
-size_t WorkerCtx::sheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_t skipCount, bool spray)
+size_t WorkerCtx::scheduleBranchExec(LinkedTask* node, WorkFunc_t method, uint32_t skipCount, bool spray)
 {
-  LonelyTask sheep;
-  sheep.action = method;
-  sheep.ctx = *this;
-  sheep.root = rootNode;
-  sheep.target = node;
-
   if(spray)
     {
-      return WebGrep::ForEachOnBranch(node, [this, &sheep](LinkedTask* _node)
+      return WebGrep::ForEachOnBranch(node, [&](LinkedTask* _node)
         {
-          std::cerr << "scheduling task:: " << _node->grepVars.targetUrl << "\n";
-          sheep.target = _node;
-          this->sheduleTask(&sheep);
+//          std::cerr << "scheduling task:: " << _node->grepVars.targetUrl << "\n";
+          WorkerCtx copy = *this;
+          WebGrep::CallableDoubleFunc dfunc;
+          {//text tag
+            const char* _src = _node->grepVars.targetUrl.data();
+            auto _len = _node->grepVars.targetUrl.size();
+            _src += _len - 1;
+            auto _min = std::min(dfunc.tag.size(), _len);
+            _src -= _min;
+            ::memcpy(dfunc.tag.data(), _src, _min - 1);
+          }
+          dfunc.functor = [copy, method, _node]()
+          {
+            //ctx instance, bind the callbacks by copying shared pointers
+            WorkerCtx temp = copy;
+            method(_node, temp);
+          };
+
+          this->scheduleFunctor(dfunc);
         },
       skipCount);
     }
   //else: make tasks consequent in one thread:
-  this->sheduleFunctor
-  ( [sheep, skipCount, node]()
-    {
-      LonelyTask ltask = sheep;
-      WebGrep::ForEachOnBranch(node, [&ltask](LinkedTask* _node)
+  WorkerCtx copy = *this;
+  WebGrep::CallableDoubleFunc dfunc;
+  dfunc.functor = [copy, skipCount, node, method]()
+  {
+      WorkerCtx temp = copy;
+      WebGrep::ForEachOnBranch(node, [&temp, method](LinkedTask* _node)
       {
-          ltask.target = _node;
-          ltask.action(_node, ltask.ctx);
+          method(_node, temp);
       },
       skipCount);
-    }
-  );
+  };
+  this->scheduleFunctor(dfunc);
 }
 
-/** shedule all all nodes of the branch to be executed by given functor.*/
-size_t WorkerCtx::sheduleBranchExecFunctor(LinkedTask* task, std::function<void(LinkedTask*)> functor, uint32_t skipCount)
+/** schedule all all nodes of the branch to be executed by given functor.*/
+size_t WorkerCtx::scheduleBranchExecFunctor(LinkedTask* task, std::function<void(LinkedTask*)> functor, uint32_t skipCount)
 {
   return WebGrep::ForEachOnBranch(task, functor, skipCount);
 }
@@ -411,7 +421,7 @@ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w)
   //call self by sending tasks calling this method to different threads
   //(tasks ventillation)
   std::cerr << __FUNCTION__ << " scheduling " << n_subtasks << " tasks more.\n";
-  w.sheduleBranchExec(child, &FuncDownloadGrepRecursive, 0, true);
+  w.scheduleBranchExec(child, &FuncDownloadGrepRecursive, 0, true);
   return true;
 }
 
