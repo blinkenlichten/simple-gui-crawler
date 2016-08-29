@@ -19,9 +19,12 @@ int main(int argc, char *argv[])
     dir.cd("PlugIns");
     lib_paths << dir.absolutePath();
 
-    sett->default_group_values(uri_map, "uri");
 #endif
     dir.cd("plugins");
+    lib_paths << dir.absolutePath();
+    dir.cd("platforms");
+    lib_paths << dir.absolutePath();
+    dir.cd("imageformats");
     lib_paths << dir.absolutePath();
     QApplication::setLibraryPaths(lib_paths);
   }
