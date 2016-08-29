@@ -233,38 +233,40 @@ void Widget::updateRenderNodes(WebGrep::RootNodePtr rootNode, WebGrep::LinkedTas
     {//clear the root tree
       makeRootWidget(rootNode, node);
       iter = taskWidgetsMap.begin();
+      return;
     }
   assert(iter != taskWidgetsMap.end());
 
   QTreeWidgetItem* pwidget = iter->second.widget;
   //create widgets for freshly created tree's branch in LinkedTask
-  QTreeWidgetItem* lastItem = nullptr;
   std::function<void(WebGrep::LinkedTask*)> makeWItem
-      = [this, &pwidget, &lastItem](WebGrep::LinkedTask* _node)
+      = [this, &pwidget](WebGrep::LinkedTask* _node)
   {
-//      if(!_node->grepVars.pageIsReady)
-//        { return; }
-      QTreeWidgetItem* item = new QTreeWidgetItem((QTreeWidgetItem*)pwidget);
+      QTreeWidgetItem* item = nullptr;
+      auto _it = taskWidgetsMap.find(_node);
+      item = (taskWidgetsMap.end() == _it)? new QTreeWidgetItem((QTreeWidgetItem*)pwidget) : _it->second.widget;
       Widget::describe(this->guiTempString, _node);
       item->setText(0, this->guiTempString);
-      pwidget->addChild(item);
-      lastItem = item;
-
-      //register widget<->task connection in the map
-      makeKnown(_node, lastItem, this->mainNode);
+      if (taskWidgetsMap.end() == _it)
+        {
+          pwidget->addChild(item);
+          //register widget<->task connection in the map
+          makeKnown(_node, item, this->mainNode);
+        }
+      else
+        {
+          Widget::describe(this->guiTempString, _node);
+          item->setText(0, this->guiTempString);
+        }
     };
   //add consequent nodes
   WebGrep::ForEachOnBranch(node, makeWItem, 0);
+  auto _ptr = WebGrep::ItemLoadAcquire(node->child);
+  for(; _ptr != nullptr; _ptr = WebGrep::ItemLoadAcquire(_ptr->child))
+    {
+      WebGrep::ForEachOnBranch(_ptr, makeWItem, 0);
+    }
 
-  //update text information for previously added level:
-  if (nullptr == parent)
-    { return; }
-  parent = WebGrep::ItemLoadAcquire(parent->parent);
-  if (nullptr == parent || 0 == parent->level)
-    { return; }
-  iter = taskWidgetsMap.find(parent);
-  assert(taskWidgetsMap.end() != iter);
-  pwidget = iter->second.widget;
   WebGrep::LinkedTask* _lt = parent;
   for(int z = 0; z < pwidget->childCount() && nullptr != _lt; ++z, _lt = WebGrep::ItemLoadAcquire(_lt->next))
     {
@@ -279,11 +281,6 @@ void Widget::onPagesListScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, W
   if (nullptr == rootNode)
     return;
 
-  std::cerr << "--------------------------\n";
-  WebGrep::ForEachOnBranch(node, [](WebGrep::LinkedTask* _node)
-  { std::cerr << "\n" << _node->grepVars.targetUrl << "\n";}, 0);
-
-  //------- ---->>>>
   //Make a functor that updates GUI with new algorithm's data.
   //Then dispatch it via queued Qt connection.
   auto ftor = std::function<void()>( [this, rootNode, node]()
@@ -291,7 +288,6 @@ void Widget::onPagesListScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, W
 
   //dispatch ftor() to be executed in Qt main loop, it'll rearrange the tree's widgets
   QMetaObject::invokeMethod(this, "onFunctor", Qt::QueuedConnection, Q_ARG(Functor_t, ftor) );
-  //<<<<--- CRITICAL SECTION ---------
 }
 //-----------------------------------------------------------------------------
 void Widget::onStart()

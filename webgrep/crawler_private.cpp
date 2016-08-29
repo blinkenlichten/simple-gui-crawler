@@ -86,10 +86,17 @@ void CrawlerPV::start(std::shared_ptr<LinkedTask> neuRootTask, unsigned threadsN
         taskRoot->child.store(0u);
         return;
       }
+    //notify that root node is parsed:
+    if (onNodeListScanned)
+      {
+        onNodeListScanned(taskRoot, taskRoot.get());
+      }
+
     worker.childLevelSpawned(taskRoot,child);
     //we have grepped N URLs from the first page
     //ventillate them as subtasks:
     worker.scheduleBranchExec(child, &FuncDownloadGrepRecursive, 0 );
+
   } catch(const std::exception& ex)
   {
     if(onException)
