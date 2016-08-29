@@ -63,7 +63,7 @@ Widget::Widget(QWidget *parent) :
   //check for tasks status sometimes
   checkOutTimer = new QTimer(this);
   connect(checkOutTimer, &QTimer::timeout, this, &Widget::onCheckOutTimer, Qt::DirectConnection);
-  checkOutTimer->start(2000);
+  checkOutTimer->start(3000);
 
   connect(ui->helpButton, &QPushButton::clicked, this, &Widget::onHelpClicked);
 
@@ -149,7 +149,7 @@ void Widget::onItemClicked(QTreeWidgetItem *item, int column)
 //must work only in GUI thread:
 void Widget::onCheckOutTimer()
 {
-//  onPagesListScanned(mainNode, mainNode.get());
+  QMetaObject::invokeMethod(this, "updateTreeCaptions", Qt::QueuedConnection);
 }
 //-----------------------------------------------------------------------------
 void Widget::describe(QString& str, WebGrep::LinkedTask* node)
@@ -159,7 +159,7 @@ void Widget::describe(QString& str, WebGrep::LinkedTask* node)
     {
       str.sprintf("url: %s (GET code: %d) (Status: %s )",
                             g.targetUrl.data(), g.responseCode,
-                            g.responseCode == 200? "downloaded" : "error");
+                            g.responseCode == 200? "downloaded" : ((g.responseCode == 0)?"waiting":"error") );
     }
   else
     {
@@ -271,6 +271,17 @@ void Widget::updateRenderNodes(WebGrep::RootNodePtr rootNode, WebGrep::LinkedTas
   for(int z = 0; z < pwidget->childCount() && nullptr != _lt; ++z, _lt = WebGrep::ItemLoadAcquire(_lt->next))
     {
       QTreeWidgetItem* item = pwidget->child(z);
+      Widget::describe(this->guiTempString, _lt);
+      item->setText(0, this->guiTempString);
+    }
+}
+//-----------------------------------------------------------------------------
+void Widget::updateTreeCaptions()
+{
+  for (auto& _pair : taskWidgetsMap)
+    {
+      WebGrep::LinkedTask* _lt = _pair.first;
+      QTreeWidgetItem* item = _pair.second.widget;
       Widget::describe(this->guiTempString, _lt);
       item->setText(0, this->guiTempString);
     }

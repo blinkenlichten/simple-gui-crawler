@@ -13,6 +13,9 @@ All changes like stop()/start() or thread number change will be applied immediat
 Pushing "Stop" butting will pause the crawler while preserving it's current tasks in memory,
 pushing "Start" button again will either continue previouslly paused task or clear everything
 and start new tasks of the Web crawler if the user has modified target URL in the GUI input line field.
+There is a limit on maximum HTML pages to be scanned, but the program will excess this value little
+bit before it stops, such behavior is a result of avoiding a bottleneck with a single mutual exclusion
+for all threads that'd synchronize them before they reach the limit. So, the limit is "fuzzy".
 
 # Compilation
 The project consists of main test03-v03/CMakeLists.txt file that makes the webgrepGUI Qt5 GUI application
@@ -172,7 +175,7 @@ The tree is being processed by different threads in a wokring queue without expl
 but it is guaranteed that each thread will write only one node everytime data fields
 without data races.
 Explicit synchronization via mutual exclusions is applied whenever task results are being dequeued
-into somewher -- a commonly used vector for export or a Qt5 GUI widgets.
+into somewhere -- a commonly used vector for export or a Qt5 GUI widgets.
 
 ## Components
 
@@ -184,15 +187,30 @@ It is hard to write it the right way from first try,
 but as a result you get a versatile task distribution system
 without inventing more and more types to describe events, methods to serialize them etc.
 
-+ Whole parsing boiler plate (with boost::regex) is located in files "webgrep/crawler_worker.h[.cpp]",
++ Whole parsing boiler plate (with std::regex) is located in files "webgrep/crawler_worker.h[.cpp]",
 it also has methods that define the program flow: spawn new tasks until there is such need for the
 algorithm.
 
-+ The class WebGrep::ThreadsPool resambles is a thread manager that can dispatch std::function<void()>
++ The class WebGrep::ThreadsPool resembles is a thread manager that can dispatch std::function<void()>
 functors to be executed, it's functionality similar to boost::basic_thread_pool,
 which was used previously, but I decided to get rid of boost since only 1 class was used from there.
-Unlike boost, ThreadsPool allows one to get the abandoned tasks when the manager has been stopped
-and it's threads joined.
+Unlike boost, my ThreadsPool has specific features:
+- allows one to get the abandoned(unfinished) tasks when the manager has been stopped and it's threads joined;
+- possibility to terminate tasks on demand without waiting for their completion;
+- preallocated vector of items, it there's no too much items coming in, it'll not need to make extra allocations;
+- controlled exceptions: they'll never get out of execution scope, onException callback will be invoked if it's not NULL,
+  imho, the user must define behavior on exception rather than catch it every time on task submission;
+Throughout the parsing flow each separate download/parse thing will be launched asynchronously using this ThreadsPool
+with functor-tasks management. Thus, all callbacks must be thread-safe (and they're).
+
++ The class WebGrep::WorkerCtx is a helper class: provides callbacks bridge/adapter,
+lets no data races, but it is safe to copy and schedule working tasks in separate thread.
+Copying here is not an overhead since each functor has a shared_ptr with data fields,
+some other fields that are vulnerable to data races are copied explicitly before getting in use by another thread.
+
++ bool FuncDownloadGrepRecursive(LinkedTask* task, WorkerCtx& w); One of main parsing methods,
+  it downloads the pages and makes URL grepping, then using WorkerCtx it'll report the results,
+  using ThreadsPool it'll schedule subtasks when there is such need.
 
 + The class WebGrep::Client is intended to make a GET requests to the remote hosts
 via HTTP(S), it encapsulates 3 possible HTTP client "engines" under the hood:
