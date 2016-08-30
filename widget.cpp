@@ -285,6 +285,7 @@ void Widget::updateTreeCaptions()
       Widget::describe(this->guiTempString, _lt);
       item->setText(0, this->guiTempString);
     }
+  QWidget::update();
 }
 //-----------------------------------------------------------------------------
 void Widget::onPagesListScanned(std::shared_ptr<WebGrep::LinkedTask> rootNode, WebGrep::LinkedTask* node)

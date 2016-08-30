@@ -94,7 +94,9 @@ then libneon/libcurl won't be needed ... but the program will fail to download t
 
 
 # Status
-The algorithm and the GUI are, they need some testing.
+The algorithm and the GUI are ready, they need some testing.
+Standalone(with Qt5 libraries shipped) binary for Linux:
+https://tfsoft.org.ua/~blinkenlichten/test03-v03-linux-amd64.tar.gz
 
 # Ideas
 There are 2 points:
@@ -104,7 +106,7 @@ There are 2 points:
 The program has reduced to minimum use of explicitly defined sync. variables like mutual exclusions,
 we're syncronizing the tasks either using lock-free RAII ownership passing(shared pointers),
 and some volatile bool flags, the rest is taken by higher level task management entities: 
-+ WebGrep::ThreadsPool  (implemented much like boost::base_threadpool, it just waits on condition),
++ WebGrep::ThreadsPool  (implemented much like boost::basic_threadpool, it just waits on condition),
 + Qt5 events loop in main GUI thread with signals/slots.
 
 They're using mutex lock + condition wait and it's just fine.

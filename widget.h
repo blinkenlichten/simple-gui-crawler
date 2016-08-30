@@ -65,11 +65,14 @@ private slots:
   void onCheckOutTimer();
   void onHelpClicked();
 
+  /** For non-GUI threads: must be invoked via queued connection only.*/
   void updateTreeCaptions();
 
 private:
 
   void print(WebGrep::LinkedTask* head, void*);
+  /** Thread-safety: wrap in to a slot with queued connection.
+   * Checkout the webgrep tree of WebGrep::LinkedTask nodes and render them.*/
   void updateRenderNodes(WebGrep::RootNodePtr rootNode, WebGrep::LinkedTask* node);
 
 
