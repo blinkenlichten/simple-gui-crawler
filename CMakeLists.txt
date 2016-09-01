@@ -6,6 +6,7 @@ project(WebgrepGUI)
 
 ## Where to look for Qt5:
 #set(QT5_SEARCH_PATH $ENV{HOMEPATH}/Qt/5.7 CACHE PATH "Qt5 search path")
+#set(QT_QMAKE_EXECUTABLE ${QT5_SEARCH_PATH}/gcc_64/bin/qmake CACHE PATH "Qt5 qmake path for GCC")
 
 ## Enables experimental build with QtNetwork instead of cURL or NEON http libraries (a.t.m. it's buggy)
 #option(USE_QTNETWORK "Experimental: Compile using QtNetwork async i/o" OFF)
@@ -15,9 +16,11 @@ set(DEPENDS_ROOT ${CMAKE_SOURCE_DIR}/3rdparty CACHE PATH "Directory where we sea
 if(WIN32)
 	#-----this must be set by the developer using cmake arguments:------
 	set(QT5_SEARCH_PATH $ENV{HOMEPATH}/Qt/5.7 CACHE PATH "Qt5 search path")
+	set(QT_QMAKE_EXECUTABLE ${QT5_SEARCH_PATH}/mingw/bin/qmake CACHE PATH "Qt5 qmake path for Windows")
 else()
 	#-----this must be set by the developer using cmake arguments:-------
 	set(QT5_SEARCH_PATH $ENV{HOME}/Qt/5.7 CACHE PATH "Qt5 search path")
+	set(QT_QMAKE_EXECUTABLE ${QT5_SEARCH_PATH}/gcc_64/bin/qmake CACHE PATH "Qt5 qmake path for GCC")
 endif()
 
 find_package(Qt5Widgets REQUIRED)
