@@ -227,7 +227,7 @@ So, in GUI we just read the reference counted pointer std::shared_ptr<LinkedTask
 deleter and update the GUI elements that shows the progress of the scanning process.
 
 
-![Screenshot](https://raw.githubusercontent.com/blinkenlichten/test03-v03/master/images/screenshot.png)
+![Screenshot](https://raw.githubusercontent.com/blinkenlichten/test03-v03/master/images/screenshot.jpg)
 
 
 # Legacy/failed experience. The project has been changing much, so these are just hints for future.
